@@ -1,0 +1,263 @@
+<这章表格比较多，用word 做笔记的，不过粘贴过来表格消失了。不过还算比较整洁！ >
+
+第二章UNIX标准化及实现
+	吐槽：哇靠！，这一张表超多，一丝不苟的记住我是做不到了，而且做笔记这种规定的东西又不能靠自己的理解进行抒写，所以还是将所有的表看完并绘制出来了。
+
+UNIX标准化
+1.	ANSI C
+1989年后期，C程序设计语言得到ANSI（美国国家标准学会）批准。
+ANSI C标准的意图是提供C程序的可移植性，使其能适合于大量不同的操作系统，而不只是UNIX。
+此标准不仅定义了C程序设计语言的语法和语义，也定义了其标准库。因为很多新的UNIX系统都提供C标准中说明的库函数，所以此库对我们来讲是很重要的。
+2.	IEEE POSIX
+POSIX是一个由IEEE（电气和电子工程学会）制订的标准族。
+POSIX的意思是计算机环境的可移植操作系统界面（Portable Operating System Interface for Computer Environment）
+1003.1（共15个工作组）操作系统界面标准，该标准定义了“POSIX依从的”操作系统必须提供的服务。虽然1003.1标准是以UNIX操作系统为基础的，但是它又不仅仅限于UNIX和类似与UNIX的系统。确实，有些供应专有操作系统的制造商也声称这些系统将依从POSIX（同时还保有他们的所有专有功能）
+3.	X/Open  XPG3
+X/Open是一个国际计算机制造商组织。它提出了一个7卷本可移植性指南X/Open Portability Guide（X/Open可移植性指南）第3版[X/Open 1989]，我们将其称之为XPG3。
+XPG3的第2卷XSI System Interface and Headers(XSI系统界面和头文件)对类似UNIX的系统定义了一个界面，该界面定义是在IEEE Std.1003.2-1988界面的基础上定制的。XPG3包含了一些POSIX.1没有的功能。
+4.	FIPS
+FIPS的含义是联邦信息处理标准，这些标准是由美国政府出版的，并由美国政府用于计算机系统的采购
+起初，采购标准是以ANSI C标准草案来规定的，后来要求某些POSIX.1的些许可选功能，所以生成了一种新的更加严格的POSIX.1标准用来作为美国政府计算机系统的采购标准。
+	
+
+UNIX实现
+1.	SVR4	
+SVR4是AT&TUNIX系统实验室的产品，它汇集了下列系统的功能：
+AT&T系统V第3.2版（SVR3.2），Sun公司的SunOS系统，加州大学伯克利分校的4.3BSD以及微软的Xenix系统。
+2.	4.3+BSD
+BSD是由加州大学伯克利分校的计算机系统研究组研究开发和分发的。
+
+
+	附表：（个人感觉标准在现实应用中都会由于情况的不同变得非常复杂，暂时还是了解常见系统的头文件比较方便编程人员的学习和理解）
+头文件	标准	实现	说明
+	ANSI C	 POSIX.1	 XPG3	 SVR4	 4.3+BSD	
+<grp.h>		*	*	*	*	组文件
+<langinfo.h>			*	*		语言信息常数
+<limits.h>	*			*	*	实施常数
+<locate.h>	*			*	*	本地类型
+<math.h>	*			*	*	数学常数
+<nl_types.h>			*	*		消息类别
+<pwd.h>		*	*	*	*	口令文件
+<regex.h>			*	*	*	正则表达式
+<search.h>			*	*		搜索表
+<setjmp.h>	*			*	*	非局部goto
+<signal.h>	*			*	*	信号
+<stdarg.h>	*			*	*	可变参数表
+<stddef.h>	*			*	*	标准定义
+<stdio.h>	*			*	*	标准I/O库
+<stdlib.h>	*			*	*	公用函数
+<string.h>	*			*	*	字符串操作
+<tar.h>		*		*		tar归档值
+<termios.h>		*	*	*	*	终端I/O
+<time.h>	*			*	*	时间和日期
+<ulimit.h>			*	*		用户限制
+<unistd.h>		*	*	*	*	符号常数
+<utime.h>		*	*	*	*	文件时间
+
+<sys/ipc.h>			*	*	*	IPC
+<sys/msg.h>			*	*		消息队列
+<sys/sem.h>			*	*		信号量 
+<sys/shm.h>			*	*	*	共享存储
+<sys/stat.h>		*	*	*	*	文件状态
+<sys/times.h>		*	*	*	*	进程时间
+<sys/types.h>		*	*	*	*	原系统数据类型
+<sys/utsname.h>		*	*	*		系统名
+<sys/wait.h>		*	*	*	*	进程控制
+
+
+
+
+
+	限制
+1.	ANSI C限制
+所有由ANSI C定义的限制都是编译时间限制。
+我们在表中有两种区别，系统是否提供带符号或不带符号的字符值。
+在所有不带符号字符情况下，所有的_MIN等于0，所以下表不予以列举。
+名字	说明	最小可接受值	典型值
+CHAR_BIT	char的位	8	8
+CHAR_MAX	char的最大值	127	127
+CHAR_MIN	char的最小值	-127	-128
+SCHAR_MAX 	带符号char的最大值	127	127
+SCHAR_MIN	带符号char的最小值	-127	-128
+UCHAR_MAX	不带符号char的最大值	255	255
+INI_MAX	Int最大值	32767	2147483647
+INT_MIN	Int最小值	-32767	-2147483648
+UINT_MAX	不带符号的int的最大值	65535	4294967295
+SHRT_MIN	short最小值	-32767	-32768
+SHRT_MAX	short最大值	32767	32767
+USHRT_MAX	不带符号的short的最大值	65535	65535
+LONG_MAX	long最大值	2147483647	2147483647
+LONG_MIN	long最小值	-2147483647	-2147483647
+ULONG_MAX	不带符号的long最大值	4294967295	4294967295
+MB_LEN_MAX	一多字节字符常数中的最大字节数	1	1
+
+2.	POSIX 限制
+POSIX.1定义了很多涉及操作系统实现限制的常数。
+它包括33个限制和常数，它们被分成八类：
+（1）	不变的最小值（本节将绘出，13个常数）
+（2）	不变值：SSIZE_MAX。
+（3）	运行时间不能增加的值：NGROUPS_MAX。
+（4）	运行时间不变的值（可能不确定）：ARG_MAX，CHILD_MAX，OPEN_MAX，STREAM_MAX以及TZNAME_MAX。
+（5）	路径名可变值（可能不确定）：LINK_MAX，MAX_CANON，MAX_INPUT，NAME_MAX，PATH_MAX以及PIPE_BUF。
+（6）	编辑时间符号常数：_POSIX_SAVED_IDS，_POSIX_VERSION以及_POSIX_JOB_CONTROL。
+（7）	执行时间符号常数：_POSIX_NO_TRUNC，_POSIX_VDISABLE以及_POSIX_CHOWN_RESTRICTED。
+（8）	不再使用的常数：CLK_TCK。
+ 在这33个限制和常数中，15个是必须定义的，其余的则按具体条件可定义可不定义。
+
+
+名字	描述	值
+_POSIX_ARG_MAX	exec函数的参数长度	4096
+_POSIX_CHILD_MAX	每个实际用户ID的子进程数	6
+_POSIX_LINK_MAX	至一个文件的连接数	8
+_POSIX_MAX_CANON	终端规范输入队列的字节数	255
+_POSIX_MAX_INPUT	终端输入队列的可用空间	255
+_POSIX_NAME_MAX	文件名中的字节数	14
+_POSIX_NGROUPS_MAX	每个进程同时的添加组ID数	0
+_POSIX_OPEN_MAX	每个进程的打开文件数	16
+_POSIX_PATH_MAX	路径名中的字节数	255
+_POSIX_PIPE_BUF	能原子地写到一管道的字节数	512
+_POSIX_SSIZE_MAX	能存在ssize_t对象中的值	32767
+_POSIX_STREAM_MAX	一个进程能一次打开的标准I/O流数	8
+_POSIX_TZNAME_MAX	时区名字节数	3
+虽然他们名字中都包含了MAX，但是一个符合POSIX.1的实现应当提供至少这样大的值，所以称他们为最小值。
+但是由于这些不变的最小值在实际应用中实在是太小了，所以和实现值的名字是删掉了前缀_POSIX_后构成的（这13个实现值是本节开始部分所列出的2-5项）。问题是所有这13个实现值并不能确保在<limit.h>头文件中定义。例如某个值：对于一个给定进程的实际值可能依赖于系统的存储器总量。如果没在头文件中定义它们，则不能再编译时使用它们作为数组边界，所以，POSIX.1决定提供三个运行时间函数以供调用：sysconf,pathconf以及fpathconf，用它们再运行时得到实际的实现值。但也有一种情况就是，该值没有实际上限，例如，SVR4的每个进程打开文件数在理论上时无线的，也被称为不确定的。
+
+3.	XPG3 限制
+XPG3定义了七个常数
+名字	说明	最小可接受的值	典型值
+NL_ARGMAX	调用printf和scanf的最大数字值	9	9
+NL_LANGMAX	LANG环境变量中的最大字节数	14	14
+NL_MSGMAX	最大消息数	32767	32767
+NL_NMAX	在N对1映射字符中的最大字节数		1
+NL_SETMAX	最大集合数	255	255
+NL_TEXTMAX	消息字符串中的最大字节数	255	255
+NZERO	缺省进程优先权	20	20
+XPG3也定义了值PASS_MAX，作为口令中的最大有效字符数（不包括终止字符null）
+4.	Sysconf、pathconf和fpathconf函数
+用于限制值在运行时确定的函数，即运行时间限制是由调用下面三个函数中的一个而取得的
+
+#include<unistd.h>
+long sysconf(int name)
+log pathconf(const char pathname,int name)
+log fpathconf(int filedes,int name)
+							函数返回成功则为相应值，出错为-1
+最后两个函数的差别，pathname(路径名)为参数，filedes(文件描述符)为参数
+下表将列出这三个函数所使用的name参数。以_SC_开始的常数用作sysconf的参数，而以_PC_开始的常数则作为pathconf或fpathconf的参数。
+对于pathconf的参数pathname，fpathconf的参数filedes有很多限制。如果不满足其中任何一个限制，则结果是未定义的。
+（1）_PC_MAX_CANON，_PC_MAX_INPUT以及_PC_VDISABLE所涉及的文件必须是终端文件。
+（2）_PC_LINK_MAX所涉及的文件可以是文件或目录。如果是目录，则返回值用于目录本身（不用于目录内的文件名项）。
+（3）_PC_NAME_MAX和_PC_NO_TRUNC所涉及的文件必须是目录，返回值用于该目录中的文件名。
+（4）_PC_PATH_MAX涉及的必须是目录。
+（5）_PC_PIPE_BUF所涉及的文件必须是管道，FIFO或目录。
+（6）_PC_CHOWN_RESTRICTED必须是文件或目录。如果是目录，则返回值指明此选择项是否适用于该目录中的文件。
+   对sysconf、pathconf和fpathconf的限制及name参数
+限制名	说明	Name参数
+ARG_MAX	Exec函数的参数最大长度（字节）	_SC_ARG_MAX
+CHILD_MAX	每个实际用户ID的最大进程数	_SC_CHILD_MAX
+Clock ticks/second	每秒时钟滴答数	_SC_CLK_TCK
+NGROUPS_MAX	每个进程最大同时添加组ID数	_SC_NGROUPS_MAX
+OPEN_MAX	每个进程最大打开文件数	_SC_OPEN_MAX
+PASS_MAX	口令中的最大有效字符数	_SC_PASS_MAX
+STREAM_MAX	在任一时刻每个进程的最大标准I/O流数——如若定义，则其值一定与FOPEN_MAX相同	_SC_STREAM_MAX
+TZNAME_MAX	时区名中的最大字节数	_SC_TZNAME_MAX
+_POSIX_JOB_CONTROL	指明实现是否支持作业控制	_SC_JOB_CONTROL
+_POSIX_SAVED_IDS	指明实现是否支持保存的设置-用户-ID和保存的设置-组-ID	_SC_SAVED_IDS
+_POSIX_VERSION	指明POSIX.1版本	_SC_VERSION
+_XOPEN_VERSION	指明XPG版本（非POSIX.1）	_SC_XOPEN_VERSION
+LINK_MAX	文件连接数的最大值	_PC_LINK_MAX
+MAX_CANON	在一终端规范输入队列的最大字节数	_PC_MAX_CANON
+MAX_INPUT	终端输入队列可用空间的字节数	_PC_MAX_INPUT
+NAME_MAX	文件名中的最大字节数(不包括null结束符)	_PC_NAME_MAX
+PATH_MAX	相对路径名中的最大字节数（不包括null结束符）	_PC_PATH_MAX
+PIPE_BUF	能原子地写到一管道的最大字节数	_PC_PIPE_MAX
+_POSIX_CHOWN_RESTRICTED	指明使用chown是否受到限制	_PC_CHOWN_RESTRICTED
+_POSIX_NO_TRUNC	指明若路径名长于NAME_MAX是否产生一错误	_PC_NO_TRUNC
+_POSIX_VDISABLE	若定义，终端专用字符可用此值禁止	_PC_VDISABLE
+				（关于具体的参数细节用法，需要在实际使用时差相关规则）
+5.	FIPS 151-1 要求
+因为用于美国国家计算机采购标准，所以需要一些扩展的POSIX.1功能。
+*要求下列POSIX.1可选功能：_POSIX_JOB_CONTROL，_POSIX_SAVED_IDS，_POSIX_NO_TRUNC，_POSIX_CHOWN_RESTRICTED和_POSIX_VDISABLE。
+*NGROUPS_MAX的最小值是8。
+*新创建的文件或目录的组ID应设置为它所在目录的组ID。
+*已传输了一些数据后，若read或write被一个捕捉到的信号所终端，则这些函数应返回已被传输的字节数。
+*登陆shell应定义环境变量HOME和LOGNAME。
+
+		6.	限定总结
+常数名	编译时间	运行时间名	最小值
+	头文件	要求否		
+ARG_MAX	<limits.h>	可选	_SC_ARG_MAX	_POSIX_ARG_MAX=4096
+CHAR_BIT	<limits.h>	要求		8
+CHAR_MAX	<limits.h>	要求		127
+CHAR_MIN	<limits.h>	要求		0
+CHILD_MAX	<limits.h>	可选	_SC_CHILD_MAX	_POSIX_CHILD_MAX=6
+每秒时钟滴答			_SC_CLK_TCK	
+FOPEN_MAX	<stdio.h>	要求		8
+INT_MAX	<limits.h>	要求		32767
+INT_MIN	<limits.h>	要求		-23767
+LINK_MAX	<limits.h>	可选	_PC_LINK_MAX	_POSIX_LINK_MAX=8
+LONG_MAX	<limits.h>	要求		2147483647
+LONG_MIN	<limits.h>	要求		-2147483647
+MAX_CANON	<limits.h>	可选	_PC_MAX_CANON	_POSIX_MAX_CANON=255
+MAX_INPUT	<limits.h>	可选	_PC_MAX_INPUT	_POSIX_MAX_INPUT=255
+MB_LEN_MAX	<limits.h>	要求		
+NAME_MAX	<limits.h>	可选	_PC_NAME_MAX	_POSIX_NAME_MAX=14
+NL_ARGMAX	<limits.h>	要求	_SC_NGROUPS_MAX	_POSIX_NGROUPS_MAX=0
+NL_LANGMAX	<limits.h>	要求		9
+NL_MSGMAX	<limits.h>	要求		
+NL_NMAX	<limits.h	要求		
+NL_SETMAX	<limits.h>	要求		
+NL_TEXTMAX	<limits.h>	要求		
+NZERO	<limits.h>	要求		
+OPEN_MAX	<limits.h>	可选	_SC_OPEN_MAX	_POSIX_OPEN_MAX=16
+PASS_MAX	<limits.h>	可选	_SC_PASS_MAX	8
+PATH_MAX	<limits.h>	可选	_PC_PATH_MAX	_POSIX_PATH_MAX=255
+PIPE_BUF	<limits.h>	可选	_PC_PIPE_BUF	_POSIX_PIPE_BUF=512
+SCHAR_MAX	<limits.h>	要求		127
+SCHAR_MIN	<limits.h>	要求		-127
+SHRT_MAX	<limits.h>	要求		32767
+SHRT_MIN	<limits.h>	要求		-32767
+SSIZE_MAX	<limits.h>	要求		_POSIX_SSIZE_MAX=32767
+STREAM_MAX	<limits.h>	可选	_SC_STREAM_MAX	_POSIX_STREAM_MAX=8
+TMP_MAX	<limits.h>	要求		10000
+TZNAME_MAX	<limits.h>	可选	_SC_TZNAME_MAX	_POSIX_TZNAME_MAX=3
+UCHAR_MAX	<limits.h>	要求		255
+UINT_MAX	<limits.h>	要求		65535
+ULONG_MAX	<limits.h>	要求		4294967295
+USHRT_MAX	<limits.h>	要求		65535
+_POSIX_CHOWN_RESTRICTED	<unistd.h>	可选	_PC_CHOWN_RESTRICTED	
+_POSIX_JOB_CONTRO:	<unistd.h>	可选	_SC_JOB_CONTROL	
+_POSIX_NO_TRUNC	<unistd.h>	可选	_PC_NO_TRUNC	
+_POSIX_SAVED_IDS	<unistd.h>	可选	_SC_SAVED_IDS	
+_POSIX_VDISABLE	<unistd.h>	可选	_PC_VDISABLE	
+_POSIX_VERSION	<unistd.h>	要求	_SC_VERSION	
+_XOPEN_VERSION	<unistd.h>	要求	_SC_XOPEN_VERSION	
+
+
+基本系统数据类型
+		头文件<sys/types.h>中定义了某些与实现有关的数据类型，他们被称之为基本系统数据类型
+类型	说明
+caddr_t	内存地址
+clock_t	时钟滴答计数器（进程时间）
+comp_t	压缩的时钟滴答
+dev_t	设备号（主和次）
+fd_set	文件描述符集
+fpos_t	文件位置
+gid_t	数值组ID
+ino_t	I节点编号
+mode_t	文件类型，文件创建方式
+nlink_t	目录项的连接计数
+off_t	文件长度和位移量（带符号的）
+pid_t	进程ID和进程组ID
+ptrdiff_t	两个指针相减的结果(带符号的)
+rlim_t	资源限制
+sig_atomic_t	能原子地存取的数据类型
+sigset_t	信号集
+size_t	对象
+ssize_t	返回字节计数的函数（带符号的）
+time_t	日历时间的秒计数器
+uid_t	数值用户ID
+wchar_t	能表示所有不同的字符码
+
+
+标准之间的冲突
+		ANSI C 和POSIX.1 在 CPU时间上有所区别，前者定义了函数clock,返回值是clock_t类型值。后者定义了函数times,它返回其调用者及其所有终止子进程CPU时间以及时钟时间。另一个可能有冲突的区域：在ANSIC标准说明函数时，可能没有考虑到POSIX.1的某些要求。
