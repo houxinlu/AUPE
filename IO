@@ -1,0 +1,514 @@
+
+        第三章 文件I/O
+
+                引言
+                        可用的文件I/O函数————打开文件，读文件，写文件等等。
+                        常用UNIX文件I/O的五个函数：open、read、write、lseek以及close。
+                        不同缓存器长度对read和write函数的影响。本章说明不带缓存的I/O（不带缓存指的是每个read和write都调用内核中的一个系统）
+			原子操作
+
+
+
+                文件描述符
+
+                        对于内核而言，所有打开文件都由文件描述符引用。
+                        文件描述符是一个非负整数，范围由0-OPEN_MAX(表2-7 规定的是16)，但是早期UNXI版本采用的上线值是19，现在很多系统则将其
+                    增加至63。
+                        幻术0，1，2应被代换成符号常数STDIN_FILENO(标准输入)、STDOUT_FILENO(标准输出)、STDERR_FILENO(标准错误输出)
+
+             
+
+                open()
+
+                        #include<sys/types.h>           //原系统数据类型
+                        #include<sys/stat.h>            //文件状态
+                        #include<fcntl.h>               //文件控制
+
+                        int open(const char *pathname, int oflag, .../*, mode_t  mode */);
+
+                        pathname是要打开或者创建的文件的名字，仅当创建新文件第三个参数“...”才使用，这个参数与权限有关，
+                        oflage参数作为此函数的多个选项，用下列一个或多个常数运算构成。（下列常数都定义在<fcntl.h>）
+
+                        O_RDONLY(只读打开):0    O_WRONLY(只写打开):1    O_RDWR(读，写打开):2    //这三个常数应当只指定一个
+                        可选常数：O_APPEND(每次写时都加到文件的尾端)；  O_CREAT(若此文件不存在则创建它)
+                                  O_EXCL(如果同时指定了O_CREAT，而文件已经存在，则出错)
+                                  O_TRUNC(如果此文件存在，而且为只读或只写成功打开，则将其长度截短为0)
+                                  O_NOCTTY(如果pathname指的是终端设备，则不将此设备分配作为此进程的控制终端)
+                                  O_NONBLOCK(如果pathname指的是一个FIFO、一个块特殊文件或一个字符特殊问紧啊，则此选择项为此文件的本次打开操作和
+                                  后续的I/O操作设置非阻塞方式)
+                                  O_SYNC(使每次write都等到物理I/O操作完成)
+				
+			由open返回的文件描述符一定时最小的未用描述符数字，这一点被很多应用程序用在标准输入，标准输出或标准出错输出上打开一个新文件
+
+			对于NAME_MAX是14，如果pathname超过14，BSD类的系统返回ENAMETOOLONG，而POSIX.1中，常数_POSIX_NO_TRUNC决定了是否进行截短过长的文件名或路径名，或者返回一个错误
+
+		
+
+		creat()			
+		
+			#include<sys/types.h>
+			#include<sys/stat.h>
+			#include<fcntl.h>
+
+			int creat(const char *pathname, mode_t mode);
+			
+			此函数等效于 open(pathname, O_WRONLY | O_CREAT | O_TRUNC, mode);
+			creat的一个不足之处是它以只写方式打开所创建的文件
+
+
+		close()
+	
+			#include<unistd.h>		//符号常数
+			
+			int close(int filedes);
+
+			关闭一个文件时也释放该进程加在该文件上的所有记录锁。
+			当一个进程终止时，它所有的打开文件都由内核自动关闭。很多程序都使用这一功能而不显式地用close关闭打开的文件。
+
+
+		lseek()
+			
+			#include<sys/tyes.h>			
+			#include<unistd.h>
+
+			off_t lseek(int filedes, off_t offset, int whence)
+			该函数所起的作用是显式地定位一个打开文件，当打开一个文件时，除非指定O_APPEND选择项，否则该”当前文件位移量“设置为0
+
+			对参数offset的解释与参数whence的值有关
+			*若whence是SEEK_SET，则将该文件的位移量设置为距文件开始处offset个字节。
+			*若whence是SEEK_CUR，则将该文件的位移量设置为其当前值加offset（正/负）
+			*若whence是SEEK_END，则将该文件的位移量设置为文件长度加offset（正/负）
+
+			若lseek成功执行，则返回新的文件位移量，可用下列方式确定一个打开文件的当前位移量：
+			off_t		currpos;
+			currpos = lseek(fd, 0, SEEK_CUR);
+			这种方法也可用来确定所涉及的文件是否可以设置位移量。如果文件描述符引用的是一个管道或FIFO，则lseek返回-1，并将errno设置为EPIPE
+
+			lseek仅将当前的文件位移量记录在内核内，它并不引起任何I/O操作，该位移量用于下一个读或者写操作
+
+			在lseek函数的示例中，进行了一个具有空洞的文件的创建，使用od命令观察文件的实际内容，空洞处都采用了\0填充。
+
+
+		
+		read()
+		
+			#include<unistd.h>
+			
+			ssize_t  read(int filedes, void *buff, size_t nbytes)
+			若read成功，返回读到的字节数。如已达到文件的尾端，则返回0.
+
+			在多种情况出现实际读到的字数少于要求读字节数：
+			*读普通文件时，在读到要求字节数之前已到达了文件尾端。
+			*当从终端设备读时，通常一次最多读一行（深入学习后，可有方法改变）
+			*当从网络读时，网络中的缓冲机构可能造成返回值小于所要求读的字节数
+			*某些面向记录的设备，例如磁带，一次最多返回一个记录。
+		
+
+
+		write()
+			
+			#include<unistd.h>
+			
+			ssize_t write(int filedes, const void *buff, size_t nbytes);
+
+			其返回值通常与参数nbytes的值不同，否则表示出错。  write出错：1.磁盘写满  2.超过了对一个给定进程的文件长度限制
+			对于普通文件，写操作从文件的当前位移量处开始。
+
+		
+		
+		I/O效率
+		
+			示例程序只使用了read和write函数来复制文件。
+			*它从标准输入读，写至标准输出
+			*很多应用程序假定标准输入时文件描述符0，标准输出时文件描述符1。本例中则用两个在<unistd.h>中定义的名字STDIN_FILENO和STDOUT_FILENO
+			*考虑到进程终止时,exit()，UNIX会关闭所有打开的文件描述符，所以此处不用close（）
+			*本程序对文本文件和二进制代码文件都能工作。
+
+			用不同缓存长度进行读操作的时间结果，由于测试的文件系统时伯克利快速文件系统，其块长为8192字节。所以BUFFSIZE为8192字节时系统CPU时间最小。
+			并且 BUFFSIZE越小系统CPU时间越大，当BUFFSIZE超过8192，并达到它的倍数时，CUP时间一直为最小值。
+			
+			
+			
+		文件共享
+			
+			1.基本文件结构理解图
+
+				
+				进程表项
+
+				
+				  fd标志                                  文件表
+				fd0:|     |	|    ———————>          文件状态标志   
+				fd1:|     |     | ——————               当前文件位移量             v节点表
+				fd2:|     |     |      |	         v节点指针     ——————>   v节点信息 
+                       			。。。         |					 i节点信息
+						       |					当前文件长度
+						       |	
+						       |——————>	   文件表	
+								文件状态标志
+								当前文件位移量            v节点表
+								  v节点指针      ——————> v节点信息
+   											 i节点信息
+											当前文件长度
+							
+							1-1. 文件内核数据结构表
+
+			2.关于文件共享的基本结构
+
+				文件共享的基本结构是基于文件内核数据结构的，即 fdx与fdy的不同文件表的v节点指针，指向同一个v节点表，故此 两个独立进程各自打开了同一
+			     文件
+			
+			根据1，2所形成的数据结构现象，进一步说明：
+			*在完成每个write后，在文件表项中的当前文件位移量即增加所写的字节数。
+			*如果用O_APPEND标志打开了一个文件，则相应标志也被设置到文件表项的文件状态标志中。
+			*lseek函数值修改文件表项中的当前文件位移量，没有进行任何I/O操作。
+			*若一个文件用lseek被定位到文件当前的尾端，则文件表项中的当前文件位移量被设置为i节点表项中的当前文件长度
+			可能有多个文件描述符项指向同一文件表项。例如 dup函数，fork后也会发生同样的情况，父，子进程对于每一个打开的文件描述符共享同一个文件表项。
+
+			此小结 还提到 文件描述符标志和文件状态标志
+
+
+		
+		原子操作
+
+			由于存在多个进程操作同一个文件的情况，其结果不可预料，所以产生了原子操作的概念
+		
+			1.添加至一个文件
+				
+				早期的UNIX版本并不支持open的O_APPEND选择项，则导致 A，B进程在同时写一个文件时，若同时将信息加到文件尾端，则会产生替换，丢失等情况，
+			        现在有了O_APPEND选择项进行原子操作。即每次内核对这种文件进行写之前，都将进程的当前位移量设置到该文件的尾端处，于是每次写之前就不再需要
+			     调用lseek函数
+
+			2.创建一个文件
+			
+				在对open函数的O_CREAT和O_EXCL选择项 同时存在时，且该文件已经存在，open将失败。因为原子操作的O_EXCL选择项会创建一个新文件，而文件存在则
+			     会返回错误				
+				
+
+
+
+		dup和dup2函数
+
+			该函数时用来复制一个现存的文件描述符	起到的作用就是使其同时打开一个v节点表（文件实体）
+			#include <unistd.h>
+			int dup(int filedes);
+			int dup2(int filedes, int filedes2);	
+			
+			由dup返回的新文件描述符一定时当前可用文件描述符中的最小数值。
+			用dup2则可以用filedes2参数指定新描述符的数值。如果filedes2已经打开，则先将其关闭。如若filedes等于filedes2，则dup2返回filedes2，而不关闭它
+
+			dup和dunp2都是原子操作 newfd = dup(1);
+			
+			复制描述符的另一种方法是使用fcntl函数，  dup(filedes) = fcntl(filedes, F_DUPFD, 0);
+								 dup2(filedes,filedes2)  ~=(不完全等于)    	    	close(filedes2);	
+											   (原子性和不同的errno)  	fcntl(filedes, F_DUPFD, filedes2);
+			
+
+
+
+
+		fcntl()
+
+			#include<sys/types.h>	
+			#include<unistd.h>
+			#include<fcntl.h>	
+
+			int  fcntl(int filedes. int cmd, .../* int arg */);		//第三个参数常是一个参数，但在使用记录锁时，第三个参数则指向一个结构的指针
+			
+			fcntl函数有五种功能：
+			*复制一个现存的描述符（cmd=F_DUPFD）
+			*获得/设置文件描述符标记（cmd=F_GETFD或F_SETFD）
+			*获得/设置文件状态标志（cmd=F_GETFL或F_SETFL）
+			*获得/设置异步I/O有权（cmd=F_GETLK,F_SETLC或F_SETLKW）
+			*获得/设置记录锁（cmd=F_GETLK,F_SETLK或F_SETLKW）
+			*F_DUPFD 复制文件描述符filedes,新文件描述符作为函数值返回
+			*F_GETFD 对应于filedes的文件描述符标志作为函数值返回。当前只定义了一个文件描述符标志FD_CLOEXEC
+			*F_SETFD 对于filedes设置文件描述符标志。新标志值按第三个参数(取整)设置/
+			*F_GETFL 对应于filedes的文件状态标志作为函数值返回
+
+			 	   对于fcntl的文件状态标志表
+			 文件状态标志				  说明				
+			 O_RDONLY				只读打开
+			 O_WRONLY				只写打开
+			 O_RDWR					读/写打开
+			 O_APPEND				写时都添加至文件尾
+			 O_NONBLOCK				非阻塞方式
+			 O_SYNC					等待写完成
+			 O_ASYNC				异步I/O
+			
+			*F_SETFL 将文件状态标志设置为第三个参数的值。可以更改的几个标志时：O_APPEND, O_NONBLOCK, O_SYNC和O_ASYNC
+			*F_GETOWN 取当前接受SIGIO和SIGURG信号的进程ID或进程组ID
+			*F_SETOWN 设置接受SIGIO和SIGURG信号的进程ID或进程组ID
+
+		
+
+		ioctl()
+			ioctl函数时I/O操作的杂物箱。终端I/O时ioctl的最大使用方面
+
+			#include<unistd.h>
+			#include<sys/ioctl.h>
+		
+			int ioctl(int filedes, int request, ...)
+		
+					4.3+BSD ioctl操作  表
+			类型		常数名		头文件		ioctl数
+			盘标号		DIOxxx		<disklabel.h>	  10
+			文件I/O		FIOxxx		<ioctl.h>	   7
+			磁带I/O		MTIOxxx		<mtio.h>	   4
+			套接口I/O	SIOxxx		<ioctl.h>	  25
+			终端I/O		TIOxxx		<ioctl.h>	  35
+		
+			磁带操作使我们可以在磁带上写一个文件结束标志，反绕磁带，越过指定个数的文件或记录等等，用本章中的其他函数（read、write、lseek等）都难以表达。
+	
+		
+		
+		/dev/fd
+			
+			该目录很有意思，其目录项是名为0,1,2等的文件。打开文件/dev/fd/n等效于复制描述符n
+			在shell实际使用中，也更加方便人们的理解
+			本节示例
+				fileter file2 | cat file1 - file3 | lpr
+				fileter file2 | cat file1 /dev/fd/0 file3 | lpr
+
+
+
+
+
+
+
+
+
+
+
+
+	
+		
+					
+
+
+
+
+
+
+
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+			
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+										
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+		
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
