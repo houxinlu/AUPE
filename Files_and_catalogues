@@ -1,0 +1,785 @@
+	
+    文件和目录
+
+	引言	
+		这章主在观察文件系统的其他特征和文件的性质。将从stat函数开始，逐个说明stat结构的每一个成员以了解文件的所有属性。
+
+	
+	stat、fstat和lstat函数
+		
+		#include<sys/types.h>
+		#include<sys/stat.h>
+		
+		int stat(const char *pathname, struct stat *buf);
+		int fstat(int filedes, struct stat *buf);
+		int lstat(const char *pathname, struct stat *buf);
+
+		给定一个pathname，stat函数返回一个与此命名文件有关的信息结构，fstat函数获得已在描述符files上打开的文件的有关信息。
+		lstat函数类似于stat，但是当命名的文件是一个符号连接时。lstat返回该符号连接的有关信息，而不是由该符号连接引用的文件的信息。
+		第二个参数是个指针，它指向一个我们应提供的结构。这些函数填写由buf指向的结构。该结构的实际定义可能随实现而有所不同。
+		下面就是第二个指针的结构类型，其实就是ls -l 命令展示出的相关信息，所以这三个函数作用于实现ls命令非常有用。
+		struct stat {
+		  mode_t  st_mode;
+		  ino_t   st_ino;
+		  dev_t	  st_dev;
+		  nlink_t st_nlink;
+		  uid_t	  st_uid;
+		  git_t	  st_gid;
+		  off_t	  st_size;
+		  time_t  st_atime;
+		  time_t  st_mtime;
+		  time_t  st_ctime;
+		  long	  st_blksize;
+		  long	  st_blocks;
+		}
+
+	
+	
+	文件类型
+
+		1.普通文件
+		2.目录文件
+		3.字符特殊文件
+		4.块特殊文件
+		5.FIFO
+		6.套接字文件（socket）
+		7.符号连接（symbolic link）
+
+		文件类型信息包含在Stat结构的st_mode成员中。
+		   下表的宏参数都是stat结构中的st_mode成员 <sys/stat.h>中的文件类型宏
+			宏			文件类型
+		    S_ISREG()			普通文件
+		    S_ISDIR()			目录文件
+		    S_ISCHR()			字符特殊文件
+		    S_ISBLK()			块特殊文件
+	            S_ISFIFO()			管道或FIFO
+		    S_ISLNK()			符号连接
+		    S_ISSOCK()			套接字
+
+
+	设置-用户-ID和设置-组-ID
+		与一个进程相关联的ID由六个或者更多
+                
+                实际用户ID              我们实际上是谁		
+	        实际组ID		
+
+		有效用户ID		用于文件存取许可权检查
+		有效组ID
+  
+                保存设置-用户-ID	由exec函数保存
+		保存设置-组-ID
+
+	
+	文件存取许可权
+
+		st_mode值也包含了对文件的存取许可权位。一共有9个。<sys/stat.h>
+
+		st_mode屏蔽			意义
+		S_IRUSR				用户-读
+		S_IWUSR				用户-写
+		S_IXUSR				用户-执行
+		S_IRGRP				组-读
+		S_IWGRP				组-写
+		S_IXGRP				组-执行
+		S_IROTH				其他-读
+		S_IWOTH				其他-写
+		S_IXOTH				其他-执行
+
+
+	新文件和目录的所有权
+
+		新文件的用户ID设置为进程的有效用户ID。关于组ID，POSIX.1允许选择下列之一作为新文件的组ID。
+		1.新文件的组ID可以是进程的有效组ID
+		2.新文件的组ID可以是它所在目录的组ID
+
+
+	access函数
+
+		access函数是按实际用户ID和实际组ID进行存取许可权测试的
+		#include<unistd.h>
+		int  access(const char *pathname, int mode);
+
+		    access函数的mode常数，取自<unistd.h>
+		   mode       			          说明				
+		   R_OK					测试读许可权
+		   W_OK 				测试写许可权
+		   X_OK					测试执行许可权
+		   F_OK					测试文件是否存在
+	
+
+	umask函数
+		
+		umask函数为进程设置文件方式创建屏蔽字，并返回以前的值。(这是少数几个没有出错返回的函数中的一个)
+		#include <sys/types.h>
+		#include <sys/stat.h>
+
+		mode_t	umask(mode_t cmask);
+		
+		参数cmask由 上表那9个常数(S_IRUSR,S_IWUSR等)逐位“或”构成的。
+		在进程创建一个新文件或新目录时，就一定会使用文件方式创建屏蔽字。
+
+
+	chmod和fchmod函数
+
+		这两个函数使我们可以更改现存文件的存取许可权。
+		#include<sys/types.h>
+		#include<sys/stat.h>
+		
+		int chmod(const char pathname, mode_t mode);
+		int fchmod(int filedes, mode_t mode);
+
+		chmod 函数在指定的文件上进行操作，而fchmod函数则对已打开的文件进行操作。
+				chmod函数的mode常数，取自<sys/stat.h>
+			     mode				说明
+			   S_ISUID			     执行时设置-用户-ID
+			   S_ISGID			     执行时设置-组-ID
+			   S_ISVTX			     保存正文
+			   S_IRWXU			     用户(所有者)读，写和执行
+			     S_IRUSR				用户(所有者)读
+			     S_IWUSR				用户(所有者)写
+			     S_IXUSR				用户(所有者)执行
+			   S_IRWXG			     组读、写和执行
+			     S_IRUSG				组读
+			     S_IWUSG				组写
+			     S_IWUSG				组执行
+			   S_IRWXO			     其他读、写和执行
+			     S_IROTH				其他读
+			     S_IWOTH				其他写
+			     S_IXOTH				其他执行
+			
+
+	粘住位(sticky bit)
+		SVR4和4.3+BSD中粘住位的主要针对目录。如果对一个目录设置了粘住位，则只有对该目录具有写许可权的用户并且满足下列条件之一，才能删除或
+	    更名该目录下的文件:
+		*拥有此文件
+		*拥有此目录
+		*是超级用户
+
+	       例如：目录/tmp和/var/spool/uucppublic是设置粘住位的候选者——这两个目录是任何用户都可在其中创建文件的目录。这两个目录对任一用户(用户、组和
+           其他）的许可权通常都是读、写和执行。但是用户不应能删除或更名属于其他人的文件，为此在这两个目录的文件方式中都设置了粘住位。
+
+
+	chown,fchown和lchown函数
+		chown函数可用于更改文件的用户ID和组ID
+		#include<sys/types.h>
+		#include<unistd.h>
+
+		int chown(const char *pathname, uid_t owner, gid_t group);
+		int fchown(int filedes, uid_t owner, gid_t group);
+		int lchown(const char *pathname, uid_t owner, gid_t group);
+
+		除了所引用的文件是符号连接以外，这三个函数的操作相类似。在符号连接情况下，lchown更改符号连接本身的所有者，而不是该符号俩捏所指向的文件。
+
+		一般系统都提供此个配置选项_POSIX_CHOWN_RESTRICTED对指定的文件起作用，则
+		（1）只有超级用户进程能更改该文件的用户ID
+		（2）若满足下列条件，一个非超级用户进程可以更改该文件的组ID：
+		    （a）进程拥有此文件(其有效用户ID等于该文件的用户ID)
+		    （b）参数owner等于文件的用户ID，参数group等于进程的有效组ID或进程的添加组ID之一。
+		这意味着，当_POSIX_CHOWN_RESTRICTED有效时，不能更改其他用户的文件的用户ID。你可以更改你所拥有的文件的组ID，但只能改到你所属于的组。
+		
+
+
+	文件长度
+		stat结构的成员st_size包含了以字节为单位的该文件的长度。此字段只对普通文件、目录文件和符号连接有意义。
+		对于普通文件，其文件长度可以是0，在读这种文件时，将得到文件结束指示。
+		对于目录，文件长度通常是一个数，列如16或512的整倍数
+		SVR4和4.3+BSD也提供字段st_blksize和st_blocks。第一个是对文件I/O较好的块长度（1024字块，I/O 速度最小0.3），第二个是所分配的实际512字块。
+		
+		文件中的空洞：  空洞是由超过文件结尾端的位移量设置，并写了某写数据后造成的。
+
+
+	文件截短
+		将一个文件的长度截短为0是一个特例，用O_TRUNC标志可以做到这一点。为了截短文件可以调用函数truncate和ftruncate。
+		#include<sys/types.h>
+		#include<unistd.h>
+
+		int truncate(const char *pathname, off_t length);
+		int ftruncate(int filedes, off_t length);
+		这两个函数将由路径名pathname或打开文件描述符filedes指定的一个现存文件的长度截短为length。如果length大于截短后的长度，则产生空洞
+
+	
+	文件系统
+		讨论传统的UNIX系统V文件系统。
+		我们可以把一个磁盘分成一个或多个分区。每个分区可以包含一个文件系统。
+			
+		磁盘   |  分区  |  分区  |  分区  |
+			       /          \
+		              /            \	
+            文件系统         |自举块|超级块|  i表  |      目录块和数据块       |
+					   |        \______________________
+                                           |                               \ 
+					   | i节点 | i节点 |  ...  | i节点 |
+
+		i节点是固定长度的记录项，它包含有关文件的信息。                        1. 大概图
+
+
+
+				<——————————  目录块和数据块  —————————————————>	
+		|   i表   | |数据块| |数据块|  |目录块|   |数据块|  |目录块|  |
+	       /	      /↑        /↑     |       \     /          /\
+              /              /         /       |________\__/           /  \
+             /              /   ______/________/	 \            /    \
+            /              /   / / 	       | 	  \          /	    \
+           |i节点|i节点|   |i节点|   |i节点|   |           \        /        \
+			     |↑ |↑	       |              |    /          \
+                             |   ——————————————|i节点号|文件名|    |              |
+                             |                 |              | —— |i节点号|文件名|
+                             |                                  |  |              |
+                              ————————————————————————————————— | 
+                                                                                       
+                                                                                     2.在忽略自举块和超级块情况下更仔细地观察文件系统
+
+
+
+	link,unlink,remove和rename函数
+		如上所述，任何一个文件可以有多个目录项指向其i节点。创建一个向现存文件连接的方法是使用link函数。
+		#include<unistd.h>
+		int link(const char *existingpath, const char *newpath);
+		
+		此函数创建一个新目录项newpath，它引用现存文件existingpath。若newpath已经存在，则返回出错
+		只有超级用户进程可以创建指向一个目录的新链接。
+		
+		删除一个现存的目录项，可以调用unlink函数
+		#include<unistd.h>
+		int unlink(const char *pathname);
+		此函数删除目录项，并将由pathname所引用的文件的连接计数减1。
+		
+                我们也可以用remove函数解除对一个文件或目录的连接。对于文件，remove的功能与unlink相同。对于目录，remove的功能与rmdir相同。
+		#include<stdio.h>
+		int remove(const char *pathname);
+
+		文件或目录用rename函数更名
+		#include<stdio.h>
+		int rename(const char *oldname, const char *newname)
+		根据oldname是指文件还是目录，有两种情况要加以说明。
+		（1）如果oldname说明一个文件而不是目录，那么为该文件更名。如果newname已存在，则它不能引用一个目录。如果newname已存在，而且不是一个目录，则先将该目录项删除然后将
+		oldname更名为newname。对包含oldname的目录以及包含newname的目录，调用进程必须具有写许可权，因为将更改这两个目录。
+		（2）如果oldname说明一个目录，那么为该目录更名。如果newname已存在，则它必须引用一个目录，而且该目录应当是空目录，如果newname存在并且是一个空目录，则先将其删除，
+		然后将oldname更名为newname。另外，当为一个目录更名时，newname不能包含oldname作为其路径前缀。
+		（3）作为一个特例，如果oldname和newname引用同一文件，则函数不做任何更改而成功返回。
+
+
+	符号连接
+		符号连接是对一个文件的间接指针，引进符号连接的原因是为了避免硬链接的一些限制，对符号连接以及它指向什么没有文件系统限制，任何用户都可创建指向目录的符号连接。
+					表：各个函数对符号连接的处理
+			函数			不跟随符号连接			跟随符号连接
+			access								*
+			chdir								*
+			chmod								*
+			chown				*	
+			creat								*
+			exec								*
+			lchown				*				
+			link								*
+			lstat				*			
+			mkdir								*
+			mkfifo								*
+			mknod								*
+			open								*
+			opendir								*
+			pathconf							*
+			readlink			*
+			remove				*
+			rename				*
+			stat								*
+			truncate							*
+			unlink				*
+
+
+	
+	symlink和readlink函数
+		symlink函数创建一个符号连接
+		#include<unistd.h>
+		int symlink(const char *actualpath, const char *sympath);
+
+		该函数创建了一个指向actualpath的新目录项sympath，在创建此符号连接时，并不要求actualpath已经存在。并且,actualpath和sympath并不需要位于同一文件系统中。
+	       因为open函数跟随符号连接，所以需要有一种方法打开连接本身，并读该连接中的名字。
+		
+		readlink函数提供了这种功能。
+		#include<unistd.h>
+		int readlink(const char *pathname, char *buf, int bufsize);
+		此函数组合了open,read和close的所有操作。
+		   如果此函数成功，则它返回读入buf的字节数。在buf中返回的符号连接的内容不以null字符终止。
+
+	
+	
+	文件的时间
+				表1   与每个文件相关的三个时间值
+		字段		说明				例子		ls(l)选择项
+		st_atime	文件数据的最后存取时间		read		     -u
+		st_mtime	文件数据的最后修改时间 		write		     缺省
+		st_ctime	i节点状态的最后更改时间		chmod,chown	     -c
+				                                                                     
+				表2   各种函数对存取，修改和更改状态时间的作用
+
+		函数		   引用文件     	引用文件（或目录）        备注
+				  （或目录）                的父目录
+				   a   m   c		a       m       c
+	
+	   chmod,fchmod			   *
+	   chown,fchown		   	   *
+	   creat		   *   *   *                    *       *          O_CREAT新文件
+	   creat		       *   *					   O_TRUNC现存文件
+	   exec			   *
+	   lchown			   *
+	   link				   *			*	*
+	   mkdir		   *   *   *			*	*
+	   mkfifo		   *   *   *			*       *
+	   open			   *   *   *			*       *	   O_CREAT新文件
+	   open			       *   *		  			   O_TRUNC现存文件
+	   pipe			   *   *   *	
+	   read			   *
+	   remove			   *			*	*	   删除文件 = unlink
+	   remove		  				*	*	   删除目录 = rmdir
+	   rename			   *			*	*	   对于两个参数
+	   rmdir						*	*
+	   truncate,ftruncate	       *   *				
+	   unlink			   *			*	*
+	   utime		  *    *   * 			
+	   write		       *   *
+
+
+	utime()
+		一个文件的存取和修改时间可以用utime函数更改。
+		#include<sys/types.h>
+		#include<utime.h>
+
+		int   utime(const  char  *pathname, const struct utimbuf * times);
+		此函数所使用的结构是：   此结构中的两个时间值是日历时间
+		
+		   struct  utimebuf{
+		   time_t   actime;		/*access time*/
+		   time_t   modtime;		/*modification time*/	
+		}
+
+	   	此函数的操作以及执行它所要求的优先权取决于times参数是否是NULL。
+		（1）如果times是一个空指针，则存取时间和修改时间两者都设置为当前时间。为了执行此操作必须满足下列两个条件之一：
+		    (a)进程的有效用户ID必须等于该文件的所有者ID，
+		    (b)进程对该文件必须具有写许可权
+		(2)如果times是非空指针，则存取时间和修改时间被设置为times所指向的结构中的值。此时，进程的有效用户ID必须等于该文件的所有者ID，或者进程必须时一个超级用户进程。
+		   对文件只具有写许可权是不够的
+
+
+
+	mkdir()和rmdir()
+		用mkdir()创建目录
+		#include<sys/types.h>
+		#include<sys/stat.h>
+		
+		int mkdir(const char *pathname, mode_t mode);
+
+		用rmdir()删除一个空目录
+		#include<unistd.h>
+		
+		int rmdir(const char *pathname)
+
+
+
+	读目录
+		对某个目录具有存取许可权的任一用户都可读该目录，但是只有内核才能写目录（防止文件系统发生混乱）。
+		UNIX现在包含了一套与读目录有关的例程，他们是POSIX.1的一部分
+		#include<sys/types.h>
+		#include<dirent.h>
+
+		DIR  *opendir(const char *pathname);
+		struct dirent *readdir(DIR *dp);
+		void rewinddir(DIR *dp);
+		int closedir(DIR *dp);
+
+		定义在头文件<dirent.h>中的dirent结构与实现有关。
+		struct dirent {
+		   ino_t  d_ino;	
+		   char   d_name [NAME_MAX+1];	
+		}		
+
+		
+
+	chdir(),fchdir()和getcwd()
+		进程调用chdir或fchdir函数可以更改当前工作目录。
+		#include<unistd.h>
+		
+		int chdir(const char *pathname);
+		int fchdir(int filedes);
+		在这两个函数中，可以分别用pathname或打开文件描述符来指定新的当前工作目录。
+		但是，chdir函数不能写到当前目录下的进程中进行该表当前用户的工作目录，这样逻辑上是错误的，shell应当直接调用chdir函数。
+
+		getcwd()函数具有 i结点向上推的功能，并且逐级上找，最终能找到当前工作目录的绝对路径名。
+		#include<unistd.h>
+		char *getcwd(char *buf, size_t size);
+		向此函数传递两个参数，一个是缓存地址buf，另一个是缓存的长度size。该缓存必须有足够的长度以容纳绝对路径名再加上一个null终止祖字符。
+
+
+
+	特殊设备文件
+		st_dev和st_rdev字段，一下则是有关规则
+		*每个文件系统都由其主，次设备号而为人所知。设备号所用的数据类型是基本系统数据类型dev_t
+		*我们通常可用使用两个大多数实现都定义的宏：major和minor来存取主，次设备号。
+		*系统中每个文件名的st_dev值是文件系统的设备号，该文件系统包含了该文件名和其对应的i节点/
+		*只有字符特殊文件和块特殊文件才有st_rdev值。此值包含该实际设备的设备号。
+
+
+	
+	sync和fsync函数
+		传统的UNIX实现在内核中设有缓冲存储器，大多数磁盘I/O都通过缓存进行。
+		当将数据写到我呢见上时，通常该数据先由内核复制到缓存中，如果该缓存尚未写满，则并不将其排入输入队列，而是等待其写满或者当内核
+		需要重用该缓存以便存放其他磁盘块数据时，再将该缓存排入输出队列，然后待其到达队首时，才进行实际的I/O操作。这种输出方式被称为延迟写。
+		但是却降低了文件内容的更新速度，使得欲写到文件中的数据在一段时间内并没有写到磁盘上。当系统发生故障时，这种延迟可能造成文件更新内容的丢失。
+		为了保证磁盘上实际文件系统与缓存中内容的一致性，UNIX系统提供了sync和fsync两个系统调用函数。
+		#include<unistd.h>
+		
+		void sync(void);
+		int fsync(int filedes);
+
+		sync只是将所有修改过的块的缓存排入写队列，然后就返回，他并不等待实际I/O操作结束。
+		update一般每间隔30s调用一次sync函数。这就保证了定期刷新内核的块缓存。
+	
+		函数fsync只引用单个文件（由文件描述符filedes指定）,它等待I/O结束，然后返回。fsync可用于数据块这样的应用程序，它确保修改过的块立即写到磁盘上。
+		比较一下fsync和O_SYNC标志。当调用fsync时，它更新文件的内容，而对于O_SYNC，则每次对文件调用write函数时就更新文件的内容。
+
+
+	
+	文件存取许可权位小结
+			表     文件存取许可权位小结
+  	  常数	  	说明               对普通文件的影响	       						 对目录的影响
+	 S_ISUID     设置-用户-ID        执行时设置有效用户ID							  （不使用）
+	 S_ISGID     设置-组-ID		 若组执行位设置，则执行时设置有效组ID，否则使强制性锁起作用              将在目录中创建新文件的组ID设置为目录的组ID
+         S_ISVTX     粘住位              在交换区保存程序正文（若支持）						 禁止在目录中删除和更名文件
+	 S_ISUSR     用户读	         许可用户读文件								 许可用户读目录项
+	 S_IWUSR     用户写	         许可用户写文件								 许可用户在目录中删除或创建文件
+         S_IXUSR     用户执行		 许可用户执行文件							 许可用户在目录中搜索给定路径名
+	 S_IRGRP     组读		 许可组读文件								 许可组读目录项
+         S_IWGRP     组写		 许可组写文件								 许可组在目录中删除或创建文件
+         S_IXGRP     组执行	         许可组执行文件							         许可组在目录中搜索给定路径名
+	 S_IROTH     其他读              许可其他读文件								 许可其他读目录项
+         S_IWOTH     其他写		 许可其他写文件								 许可其他在目录中删除或创建文件
+         S_IXOTH     其他执行		 许可其他执行文件                                                        许可其他在目录中搜索给定路径名
+
+	最后9个常数分成3组
+	S_IRWXU = S_IRUSR | S_IWUSR | S_IXUSR
+	S_IRWXG = S_IRGRP | S_IWGRP | S_IXGRP
+	S_IRWXO = S_IROTH | S_IWOTH | S_IXOTH
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+			
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+q
+q
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+		
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+			
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+		
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+		
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
