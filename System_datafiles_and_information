@@ -1,0 +1,197 @@
+第六章 系统数据文件及信息
+
+	引言
+		很多操作系统需要使用一些与系统有关的数据文件，由于历史原因，这些数据文件都是ASCLL文本文件，并且使用标准I/O库读这些文件。但是为了节省时间，我们想以非
+	      ASCII文本格式存访这些文件，但扔向应用程序提供一个可以处理任何一种文件格式的界面。
+
+
+
+	口令文件
+		UNIX口令文件包含了七个字段（POSIX.1指定了passwd结构中的5个，SVR4和4.3+BSD支持两个），这些字段包含在<pwd.h>中定义的passwd结构中。
+
+					表1   /etc/passwd文件中的字段
+
+			说明			struct  passwd成员		   POSIX.1
+			用户名			char	*pw_name		      *
+			加密口令		char	*pw_passwd			
+			数值用户ID		uid_t	pw_uid			      *
+			数值组ID		gid_t	pw_gid			      *
+			注释字段		char	*pw_gecos		      
+			初始工作目录		char	*pw_dir			      *	 
+			初始shell(用户程序)	char	*pw_shell		      *
+
+		由于历史原因，口令文件是/etc/passwd，而且是一个文本文件。
+		*通常都有一个超级用户root,ID为0。
+		*加密口令字段包含了经单向密码算法处理过的用户口令副本。
+		*口令文件中的某些字段可能是空。
+		*支持finger(1)命令的某些UNIX系统支持注释字段中的附加信息。
+
+		POSIX.1只定义了两个存取口令文件中信息的函数。在给出用户登录名或数值用户ID后，这两个函数就能查看相关记录
+		#include<sys/types.h>
+		#include<pwd.h>
+
+		struct  passwd  *getpwuid(uid_t  uid);
+
+		struct  passwd  *getpwnam(const char *name);
+		
+		getpwuid由ls(1)程序使用，以便将包含在一个i节点中的数值用户ID映照为用户登陆名。
+		getpwnam在键入登陆名时由login(1)程序使用。
+
+		查看整个口令文件的三个函数
+		#include<sys/types.h>
+		#include<pwd.h>
+
+		struct	passwd	*getpwent(void);
+		void  setpwent(void);
+		void  endpwent(void);
+
+		调用getpwent时，它返回口令文件中的下一个记录。
+		函数setpwent反绕它所使用的文件，endpwent则关闭这些文件。在使用setpwent查看完口令文件后，一定要调用endpwent关闭这些文件。
+
+
+
+	阴影口令
+		为了保证用户口令的安全性，系统生成了一个阴影口令文件，该文件至少包含用户名和加密口令，甚至密码有效期的记录信息等也在其中。
+		并且仅有少数几个程序需要存取加密口令文件，例如login(1)和passwd(1)，这些程序常常设置为root用户。有了阴影口令后，普通口令文件/etc/passwd可由
+		各用户读取。
+		阴影口令文件是/etc/shadow，加密口令存访在/etc/master.passwd中。
+
+
+
+	组文件
+		UNIX组文件包含了四个字段(gr_passwd由SVR4和4.3+BSD支持，别的由POSIX.1支持)，这些字段都包含在<grp.h>中所定义的group结构中。
+
+			表1	/etc/group文件中的字段
+		说明				struct group成员	POSIX.1
+		组名				char	*gr_name	 *
+		加密口令			char	*gr_passwd	
+		数字组ID			int	gr_gid		 *
+		指向各用户名指针的数组		char	**gr_mem	 *
+
+		可以用下列两个由POSIX.1定义的函数来查看组名或数值组ID
+		#include<sys/types.h>
+		#include<grp.h>
+
+		struct	group	*getgrgid(gid_t	gid);
+		struct	group	*getgrnam(const char  *name);
+		如同对口令文件进行操作的函数一样，这两个函数通常也返回指向一个静态变量的指针，在每次调用时都重写该静态变量。
+
+		如果需要搜索整个组文件，有三个函数可以使用。
+		#include<sys/types.h>
+		#include<grp.h>
+
+		struct	group	*getgrent(void);
+		
+		void	setgrent(void);
+		
+		void	endgrent(void);
+		setgrent打开组文件并反绕它。getgrent从组文件中读下一个记录，如果该文件尚未打开则先打开它。endgrent关闭组文件。
+
+
+
+	添加组ID
+		可以在任何时候执行newgrp(1)以更改组ID，执行不带参数的newgrp，则返回到原来的组。
+		使用添加组ID的优点时不必再显式地经常更改组。
+		为了存取和设置添加组ID提供了下列三个函数：
+		#include<sys/types.h>	
+		#include<unistd.h>
+
+		int  getgroups(int gidsetsize, gid_t grouplist[]);
+		
+		int  setgroups(int ngroups, const gid_t  grouplistp[]);
+		
+		int  initgroups(const char *username, gid_t basegid);
+		
+		getgroups将进程所属用户的各添加组ID填写到数组grouplist中，填写入该数组的添加组ID数最多为gidsetsize个。
+
+
+
+	其他数据文件
+		BSD网络软件有一个记录各网络服务器所提供的服务的数据文件（/etc/services）,记录协议信息的数据文件(/etc/protocols),还有一个则是记录网络信息的数据
+	     文件(/etc/networks),但它们与上述口令文件和组文件都是相似的。
+		一般情况下每个数据文件至少有三个函数：
+		（1）get函数：读下一个记录，如果需要还打开该文件。此种函数通常返回指向一个结构的指针。当以达到文件尾端时返回空指针。大多数get函数返回指向一个
+		            静态存储类结构的指针，如果要保存其内容，则需复制它。
+		（2）set函数：打开相应数据文件（如果尚未打开），然后反绕该为文件。如果希望在相应文件起始处开始处理，则调用此函数。
+		（3）end函数：关闭相应数据文件。
+
+				表1	存取系统数据文件的一些例程
+		说明		数据文件	 头文件		结构		附加的关键字搜索函数
+		口令		/etc/passwd	<pwd.h>		passwd		getpwnam,getpwuid
+		组		/etc/group	<grp.h>		group		getgrnam,getgrgid
+		主机		/etc/hosts	<netdb.h>	hostent		gethostbyname,gethostbyaddr
+		网络		/etc/networks	<netdb.h>	netent		getnetbyname,getnetbyaddr
+		协议		/etc/protocols	<netdb.h>	protoent	getprotobyname,getprotobynumber
+		服务		/etc/services	<netdb.h>	servent		getservbyname,getservbyport
+
+
+
+	登陆会计
+		utmp文件：它记录当前登陆仅系统的各个用户；
+		wtmp文件：它跟踪各个登陆和注销事件
+		v7中，包含下列结构的一个二进制记录写入这两个文件中：
+		struct	utmp{
+		  char	ut_line[8];		/* tty line: */
+		  char	ut_name[8];		/* login name */
+		  long  ut_time;		/* seconds since Epoch */
+		};
+
+		信息记录流程： 登陆时，Login程序填写该结构，然后将其写入utmp文件，同时写入wtmp文件。
+			       注销时，init进程将utmp文件中相应的记录擦除，并将一个新纪录填写到wtmp文件中。
+			       读wtmp文件中的该注销记录，其ut_name字段清除为0。
+			       在系统再启动时，以及更改系统时间和日期的前后，都在wtmp文件中添写特殊的记录项。
+		who(1)程序读utmp文件，并以可读格式打印其内容。
+		last(1)命令，读wtmp文件并打印所选择的记录。
+
+
+
+	
+	系统标识
+		POSIX.1定义了uname函数，它返回与主机和操作系统有关的信息。
+		#include<sys/utsname.h>
+		
+		int	uname(struct	utsname  *name);
+		
+		通过该函数的参数向其传递了一个utsname结构的地址，然后该函数填写此结构。
+		
+		struct  utsname {
+		   char	sysname[9];		/* name of the operating system */
+		   char nodename[9];		/* name of this node */
+		   char release[9];		/* current release of operating system */
+		   char version[9];		/* current version of this release */
+		   char machine[9];		/* name of hardware type */
+		}
+
+		伯克利类的版本提供gethostname函数，他只返回主机名。
+		#include<unistd.h>
+		
+		int	gethostname(char *name, int namelen);
+		
+		<sys/param.h>中的常数 MAXHOSTNAMELEN规定了此名字的最大长度。
+		hostname(1)命令可用来存取和设置主机名。（超级用户用一个类似的函数sethostname来设置主机名）
+
+
+
+
+	时间和日期例程
+		由UNIX内核提供的基本时间服务时国际标准时间公元1970年1月1日00：00：00以来经过的秒数。这种秒数是以数据类型time_t表示的。我们称它为日历时间。
+
+		关于各种事件函数之间的关系
+					
+				字符串				格式化字符串
+			 	\    ↑\	                           /↑
+                                 \     \			  /
+				  \	\aactime		 /strftime
+				   \     \                      /	    
+                            ctime   \     \                    /
+                                     \         struct  tm 
+                                      \	      ↑	   ↑    |	(1)gmtime
+                                       \      |(1) |(2) |(3)	(2)localtime
+					\     |    |    |	(3)mktime
+					 \    |    |    ↓
+					         time_t  （日历时间）
+						   ↑ 
+   					           |time
+						   |  		
+						  内核
+			时间相关的表，由于不经常用在应用代码中，所以这里就不细节性的列出。
