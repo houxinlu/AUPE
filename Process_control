@@ -1,0 +1,379 @@
+进程控制
+
+	引言
+		UNXI的进程控制，包含 创建新进程、执行程序和进程终止。
+		还将说明进程的各种ID————实际、有效和保存的用户和组ID，以及它们如何收到进程控制原语的影响。
+		解释器文件和system函数。
+
+
+
+	进程标识
+		专用进程：进程ID 0是调度进程，常常被称为交换进程。它并不执行任何磁盘上的程序————它是内核的一部分，因此也被称为系统进程。
+			  进程ID 1通常数 init进程，在自举过程结束时由内核调用。
+
+		除了进程ID，每个进程还有一些其他标识符。
+		#include<sys/types.h>
+		#include<unistd.h>
+
+		pid_t	getpid(void);			返回：调用进程的进程ID
+						
+		pid_t	getppid(void);			返回：调用进程的父进程ID
+		
+		uid_t	getuid(void);			返回：调用进程的实际用户ID
+		
+		uid_t	geteuid(void);			返回：调用进程的有效用户ID
+		
+		git_t	getgid(void);			返回：调用进程的实际组ID
+					
+		gid_t	getegid(void);			返回：调用进程的有效组ID
+
+
+
+
+	fork()
+		一个现存进程调用fork函数是UNIX内核创建一个新进程的唯一方法（针对普通进程，非自举进程）
+
+		#include<sys/types.h>
+		#include<unistd.h>
+
+		pid_t	fork(void);
+		由fork创建的新进程被称为子进程，该函数被调用一次，但返回两次。两次返回的区别是子进程的返回值是0，父进程返回值则是子进程
+	      的进程ID。
+
+		子进程和父进程继续执行fork之后的指令。子进程是父进程的复制品。
+		例如，子进程获得父进程数据空间，堆和栈的复制品。注意，这是子进程所拥有的拷贝。父、子进程并不共享这些存储空间部分。如果正
+              文段是只读的，则父，子进程共享正文段。
+
+		但是很多实现并非完全拷贝，因为fork之后进场跟随着exec。使用了在写时复制（Copy-On-Write,COW）技术。
+
+		在fork之后是夫程序先执行还是子程序先执行是不确定的。在后续的有关的信号学习中可使父、子程序同步。
+
+		文件共享
+			因为父、子进程每个相同的打开描述符共享一个文件表项，如果父、子进程写到同一描述符文件，但又没有任何形式的同步则
+		     会出现混淆。但这种情况并不常用
+			在fork之后处理文件描述符的常见的情况：
+			（1）父进程等待子进程完成。
+			（2）父、子进程各自执行不同的程序段。在这种情况下，在fork之后，父、子进程各自关闭它们不需使用的文件描述符，并且
+			不干扰对方使用的文件描述符。这种方法是网络服务进程中经常使用的。
+
+		fork()失败
+			(1)系统中已经有了太多的进程(哪里拥塞住了)
+			(2)该实际用户ID的进程总数超过了系统限制。
+
+		fork()两种用法：
+			(1)一个父进程希望复制自己，使父、子进程同时执行不同的代码段。网络服务进程中是常见的
+			(2)一个进程要执行一个不同的程序。这对shell是常见的，子进程在从fork()返回后立即调用exec。
+
+
+
+
+	vfork()
+		vfork函数的调用序列和返回值与fork相同，但两者的语义不同。
+		vfork用户创建一个新进程，而该新进程的目的是exec一个新程序。
+		vfork与fork一样都创建一个子进程，但是它并不将父进程的地址空间完全复制到子进程中，而且vfork保证子进程先运行。
+		vfork的子进程在父进程的地址空间中运行。
+		本节书中的例子 还进行了一个在结束时调用exit和_exit的区别，子进程调用exit时，它刷新开关闭了所有标准I/O流，会使
+	      父进程的printf返回-1。
+
+
+		
+	
+	exit()
+		进程有三种正常终止法及两种异常终止法。
+		（1）正常终止：
+		    （a）在main函数内执行return语句。
+		    （b）调用exit函数。
+		    （c）调用_exit系统调用函数。此函数由exit调用，它处理UNIX特定的细节。
+		（2）异常终止：
+		    （a）调用abort。它产生SIGABRT信号，所以是下一种异常终止的一种特例。
+		    （b）当进程接收到某个信号时。进程本身(例如调用abort函数)、其他进程和内核都能产生传送到某一进程的信号。
+		不管进程如何终止，最后都会之心内核中的同一段代码。这段代码当相应进程关闭所有打开描述符，释放它所使用的存储器等待。
+		正常终止是通过exit和_exit，传递给它们的推出状态参数实现的。
+		异常终止，内核产生一个指示其异常终止原因的终止状态。
+		任意一种情况下，该终止进程的父进程都能用wait或waitpid函数取得其终止状态。
+
+
+
+
+	wait()和waitpid()
+		当然，一般有两个函数作用，后者绝大多数即是前者的升级版本。
+		当一个进程正常或异常终止时，内核就向其父进程发送SIGCHLD信号，因为子进程终止是个异步事件，所以这种信号也是内核向父进程
+	      发的异步通知。父进程有两种选择，忽略或执行信号处理函数，对于这种信号系统默认是忽略的。
+		
+		调用wait或waitpid的进程可能会：
+		*阻塞（如果其他子进程还都在运行）。
+		*带子进程的终止状态立即返回（如果一个子进程已终止，正等待父进程存取其终止状态）。
+		*出错立即返回（如果它没有任何子进程）。
+		如果进程期望收到SIGCHLD信号而调用wait，则可期望wait会立即返回。但是如果在一个任一时刻调用wait，则进程可能会阻塞。
+		
+		#include<sys/types.h>
+		#include<sys/wait.h>
+
+		pid_t	wait(int *statloc);
+		pid_t	waitpid(pid_t pid, int *statloc, int options);
+
+		这两个函数的区别是：
+		*在一个子进程终止前，wait使其调用者阻塞，而waitpid有一选择项，可使调用者不阻塞。
+		*waitpid并不等待第一个终止的子进程————它有若干个选项项，可以控制它所等待的进程。
+
+		这两个函数的参数statloc是一个整型指针。如果statloc不是一个空指针，则终止进程的终止状态就存放在它所指向的单元内。
+	      如果不关心终止状态，则可将该参数指定为空指针。
+
+
+				表1	检查wait和waitpid所返回的终止状态的宏
+			宏				说明
+		WIFEXITED(status)		若为正常终止子进程返回的状态，则为真。对于这种情况可执行WEXITSTATUS(status)
+						取子进程传送给exit或_exit参数的低8位。
+
+		WIFSIGNALED(status)		若为异常终止子进程返回的状态，则为真(接到一个不捕捉的信号)。对于这种情况，
+						可执行
+						    WTERMSIG(status)
+						取使子进程终止的信号编号。
+						另外，SVR4和4.3+BSD定义宏:WCOREDUMP(status)
+						若已产生终止进程的core文件，则它返回真
+
+		WIFSTOPPED(status)		若为当前暂停子进程的返回的状态，则为真。对于这种情况，可执行
+						    WSTOPSIG(status)
+						取使子进程暂停的信号编号
+
+		对于waitpid的pid参数的解释与其值有关：
+		*pid == -1  等待任一子进程。这一功能方面waitpid与wait等效。
+		*pid > 0 等待其进程ID与pid相等的子进程。
+		*pid == 0 等待其组ID等于调用进程的组ID的任一子进程。
+		*pid < -1 等待其组ID等于pid的绝对值的任一子进程。
+
+		waitpid函数提供了wait函数没有提供的三个功能：
+		(1)waitpid等待一个特定的进程（而wait则返回任一终止子进程的状态）。在讨论popen函数时会再说明这一功能。
+		(2)waitpid提供了一个wait的非阻塞版本。
+		(3)waitpid支持作业控制
+
+		
+
+	wait3()和wait4()
+	  	4.3+BSD提供的这两个函数比上述函数所提供的功能多一个参数rusage。该参数要求内核返回由终止进程及其所有子进程使用的资源摘要。
+		#include<sys/types.h>
+		#include<sys/wait.h>
+		#include<sys/time.h>
+		#include<sys/resource.h>
+
+		pid_t	wait3(int *statloc, int options, struct rusage *rusage);
+		
+		pid	wait4(pid_t pid, int *statloc, int options, struct rusage *rusage);
+		
+
+
+
+	竞态条件
+		其实这里的竞态条件和定期询问是为了下文做铺垫用的，因为 这里提到的竞态条件和定期询问都只是面对，当多个进程都企图对共享数
+	     据进行某种处理，而最后的结果又取决于进程运行的顺序时，而采取的称谓和简单的解决方法。
+		这里先用了五个例程TELL_WAIT、TELL_PARENT、TELL_CHILD、WAIT_PARENT以及WAIT_CHILD（可以是宏，也可以是函数）做了实现，但
+	     都不是最优的方法，通过后续的章节，例如 信号等 会更好。
+
+
+
+
+	exec()
+		exec用另一个新程序替换了当前进程的正文、数据、堆和栈段。
+		再fork()创建子进程后，子进程往往要调用一种exec函数以执行另一个程序。
+		基本控制原语：fork创建，exec执行新的程序，exit和两个wait处理终止和等待终止。
+
+		#include<unistd.h>
+		int  execl(const char *pathname, const char * arg0, ... /* (char *) 0 */);
+		int  execv(const char *pathname, char *const argv[]);
+		int  execle(const char *pathname, const char * arg0, .../* (char *) 0, char *const envp[] */);
+		int  execve(const char *pathname, char *const argv[], char *const envp[]);
+		int  execlp(const char *filename, const char * arg0, .../* (char *) 0 */);
+		int  execvp(const char *filename, char *const argv[]);
+		这些函数之间的第一个区别是前四个取路径名作为参数，后两个则取文件名作为参数。
+		当指定filename作为参数时：
+		*如果filename中包含/，则就将其视为路径名。
+		*否则就按PATH环境变量，在有关目录中搜寻可执行文件。
+
+		如果execlp和execvp中的任意一个使用路径前缀中的一个找到了一个可执行文件，但是该文件不是由连接编辑程序产生的机器可执行代码
+	     文件，则就认为该文件是一个shell脚本，于是试着调用/bin/sh，并以该filename最为shell的输入。
+		第二个区别与参数表的传递有关(1表示表(list),v表示矢量(vector))。函数execl、execlp和execle要求将新程序的每个命令行参数都说
+	     明为一个单独的参数。这种参数表以空指针结尾
+		最后一个区别与向新程序传递环境表相关。以e结尾的两个函数(execle和execve)可以传递以恶搞指向环境字符串指针数组的指针。
+	
+		这六个函数名中的字符会给我们一些帮助。字母p表示该函数取filename作为参数，并且用PATH环境变量寻找可执行文件。
+		字母l表示该函数取一个参数表，它与字母v互斥。v表示该函数取一个argv[]。字母e表述该函数取envp[]数组。而不使用当前环境。
+
+					表8	六个exec函数之间的区别
+		函数		pathname	filename	参数表		argv[]		environ		envp[]
+		execl		   *				  *				   *
+		execlp				   *		  *				   *
+		execle		   *				  *						  *
+		execv		   *		 				  *		   *
+		execvp				   *				  *		   *
+		execve		   *		 				  *				  *
+		(字母表示)			   p		  l		  v				  e
+
+
+
+
+	更改用户ID和组ID
+		可以用setuid()设置实际用户ID和有效用户ID。与此类似，可以用setgid()设置实际组ID和有效组ID。
+		#include<sys/types.h>
+		#include<unistd.h>
+
+		int  setuid(uid_t uid);
+		int  setgid(gid_t gid);
+		
+		改变用户ID的规则：
+		（1）若进程具有超级用户特权，则setuid()将实际用户ID、有效用户ID、以及保存的设置-用户-ID设置为uid。
+		（2）若进程没有超级用户特权，但是uid等于实际用户Id或保存的设置-用户-ID，则setuid只将有效用户ID设置为uid。
+		（3）如果上面两个条件都不满足，则errno设置为EPERM,并返回出错。
+		这里假定_POSIX_SAVED_IDS为真。如果没有提供这种功能，则上面所说的关于保存的设置-用户-ID部分都无效。
+
+		关于内核所维护的三个用户ID：
+		（1）只有超级用户进程可以更改实际用户ID。
+		（2）仅当对程序文件设置了设置-用户-ID位时，exec函数设置有效用户ID。
+		（3）保存的设置-用户-ID是由exec从有效用户ID复制的。
+
+		setreuid()和setregid()
+			4.3+BSD支持setregid(),其功能是交换实际用户ID和有效用户ID的值。
+			#include<sys/tyoes.h>
+			#include<unistd.h>
+			int setreuid(uid_t ruid, uid_t euid);
+			int setregid(gid_t rgid, gid_t egid);
+
+		seteuid()和setegid()
+			它们只更改有效用户ID和有效组ID
+			#include<sys/types.h>
+			#include<unistd.h>
+			int seteuid(uid_t uid);
+			int setegid(gid_t gid);
+
+
+		
+		组ID
+			上述一些类型方式都适用于各个组ID。添加组ID不受setgid()的影响
+
+
+			超级用户			超级用户			超级用户
+		   setreuid(ruid,euid)	    	      setuid(uid)		      seteuid(uid)
+			  |        \         uid  /       |        \ uid        uid /
+			  |  	     \euid	/	  |	     \            /
+   			  |    	       \      /	 	  |	       \        /
+			  |	         \  /	 	  |		 \    /
+		     ruid |		  /\		  |uid		   \/
+			  |		/    \		  |		  /  \
+			  |	      /	       \	  |		/      \
+			  |	    /	  	 \	  |	      /	 	 \
+			  |	  /	           \      |	    /		   \
+                          ↓   ↓ /		     \↓   ↓	↓ /		     \↓	
+		 ——————————  —————————————————————>  ——————————	<——————————————————  ————————————
+		|实际用户ID|   非特权的setreuid	    |有效用户ID| 非特权的setreuid   |  保存的    |		
+		 —————————— <—————————————————————   ——————————                     |设置-用户-ID| 
+		    |				    ↑       ↑  \↑	          ↑ /————————————
+		    |				    |	    |	      设置执行            |
+                    |   			    |	    |	   -用户-ID的exec         |
+                    |———————————————————————————————|       |———————————————————————————— |
+			非特权的setuid或seteuid			非特权的setuid或seteuid
+		
+				图1   设置不同的用户ID的各函数
+
+
+
+	解释器文件
+		这种文件是文本文件，其起始行的形式是：
+		#！pathname[optional-argument]
+		
+		常用的shell脚本的开头	
+		#!/bin/sh
+
+		本节中示例执行一个解释器文件用的函数即是 execl()
+
+
+
+	system函数
+		该函数使得在程序中执行一个命令字符串很方便。
+
+		ANSIC定义了system函数，但是其操作对系统的依赖性很强。
+		#include<stdlib.h>
+		int system(const char *cmdstring);
+		如果cmdstring是一个空指针，则仅当命令处理程序可用时，system返回非0值，这一特征可以决定在一个给定的操作系统上是否支持
+	     system()。在UNIX中，system总是可用的。
+
+		system()有三种返回值，它在实现中调用了fork、exec和waitpid，
+		（1）如果fork失败或者waitpid返回除EINTR之外的出错，则system返回 -1，而且errno中设置了错误类型。
+		（2）如果exec失败，则其返回值如同shell执行了exit一样。
+		（3）否则所有三个函数(fork,exec和waitpid)都成功，并且system的返回值是shell的终止状态，其格式已在waitpid中说明。
+
+
+
+
+	进程会计
+		很多UNIX系统提供了一个选择项以进行进程会计事务处理。当取了这种选择项后，每当进程结束时内核就写一个会计记录。
+		典型的会计记录是32字节长的二进制数据，包括命令名、所使用的CPU时间总量、用户ID和组ID、启动时间等。
+		会计记录结构定义在头文件<sys/acct.h>中，其样式如下：
+		typedef	   u_short  comp_t;
+		
+		struct	 acct
+		{
+		  char	 ac_flag;		/* flag (see Figure 8.9) */
+		  char   ac_stat;		/* termination status (signal & core flag only)  终止状态（仅限信号和内核标志） */
+		  				/* (not provided by BSD systems) */
+		  uid_t	 ac_uid;		/* real user ID */	
+		  gid_t  ac_gid;		/* real group ID */
+		  dev_t	 ac_tty;		/* controlling terminal 控制终端 */
+		  time_t ac_btime;		/* starting calendar time  开始日历时间 */
+		  comp_t ac_utime;		/* user CPU time (clock ticks) */
+		  comp_t ac_stime;		/* system CPU time ( c.. t..) */
+		  comp_t ac_etime;		/* elapsed time (c.. t..) 经过的时间 */
+		  comp_t ac_mem;		/* average memory usage  平均内存使用情况 */
+		  comp_t ac_io;			/* bytes transferred(by read and write)  传输的字节(通过读写) */
+		  comp_t ac_rw;			/* blocks read or written 块读取或写入 */
+		  char ac_comm[8];		/* command name:[8] for SVR4,[10] for 4.3+BSD */
+		};
+
+		关于ac_flag记录的值
+				 表1	会计记录中的ac_flag值
+			   ac_flag			说明
+			   AFORK		      进程是由fork产生的，但从未调用exec
+			   ASU			      进程使用超级用户优先权
+			   ACOMPAT		      进程使用兼容方式（仅VAX）
+			   ACORE		      进程转储core(不在SVR4)
+			   AXSIG		      进程由信号消灭(不在SVR4) 
+
+	      注意：
+		进程终止时写一个会计记录。这就意味着在会计文件中记录的顺序对应于进程终止的顺序，而不是它们启动的顺序。
+		会计记录对应于进程而不是程序，书中举了一个非常形象的例子
+					     如果一个进程顺序执行了三个程序（A exec B,B exec C,最后C exit），但只会写一个会计记录。
+					     在该记录中的命令名对应于程序C，但CPU时间时程序A，B，C之和。
+
+
+
+	用户标识
+		任一进程都可以得到其实际和有效用户ID及组ID。调用getpwuid(getuid())可以找到运行该程序的用户的登陆名。
+		如果一个用户有多个登陆项，它们的ID相同，但登陆shell不同。
+		系统通常保存用户的登陆名，用getlogin函数可以存取此登陆名
+		
+		#include<unistd.h>
+			
+		char *getlogin(vodi);
+		如果调用此函数的进程没有连接到用户登陆时所用的终端，则本函数会失败。
+		通常称这些进程为精灵进程。
+
+
+
+
+	进程时间
+		开始已经说了 时间的类型有：墙上时钟时间、用户CPU时间和系统CPU时间。任一进程都可调用times函数以获得自己及终止子进程的
+	      上述值。
+		#include<sys/times.h>
+		
+		clock_t	 times(struct tms *buf);
+
+		此函数填写由buf指向的tms结构，该结构定义如下：
+		struct tms{
+		  clock_t	tms_utime;		/* user CPU time */
+		  clock_t	tms_stime;		/* system CPU time */
+		  clock_t	tms_cutime;		/* user CPU time, terminated children */
+		  clock_t	tms_cstime;		/* system CPU time, terminated children */
+		};
+		
+		注意：此结构没有包含墙上时钟时间。作为代替，times()返回墙上时钟时间作为函数值。但是此值是相对过去某一时刻的。
+		      比如：调用times,保存其返回值，在以后某个时间再次调用times，两者相减，此差值就是墙上时钟时间。一般不会出错。
+
+
