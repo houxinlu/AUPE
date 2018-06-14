@@ -1,0 +1,310 @@
+第十一章  终端 I/O
+
+
+	在操作系统中，终端I/O处理是个非常繁琐的部分，UNIX也不例外。
+	UNIX终端I/O处理发展成两种不同的风格。
+	一种是系统III在V7的基础上进行了很多改变而形成的，这种风格由系统V延续下来
+	另一种则是V7的风格，它正成为伯克利类系统的标准组成部分。
+
+
+	感觉 终端IO 基本来说，好像平常也不咋地用，但是规定的表项非常的多，还是作为了解 记录下来吧！
+
+
+	综述
+		终端I/O有两种不同的工作方式：
+		（1）规范方式输入处理。这种方式中，终端输入以行为单位进行处理。对于每个读要求，终端驱动程序最多返回一行。
+		（2）非规范方式输入处理。输入字符不以行为为单位进行装配。
+
+
+		终端设备是由一般位于内核中的终端驱动程序所控制的。每个终端设备有一个输入队列，一个输出队列。
+
+				进程写的下一个字符		   进程读的下一个字符
+					|				 ↑
+					↓       若回送字符               |
+			        输出队列   <——————————————————    输入队列
+				|				  ↑ 	
+				↓				  |
+			 传送给设备的下一个字符			 <——————MAX_INPUT——————>
+								  |		
+								设备读的下一个字符
+
+					图11-1  终端设备的输入、输出队列的逻辑结构
+
+
+		对此图的说明：
+		*如果需要回送，则在输入队列和输出队列之间有一个隐含的连接。
+		*输入队列的长度MAX_INPUT是有限值，当一个特定设备的输入队列已经填满时，系统作何种处理依赖于实现。当此发生时，大多数UNIX系统
+		回送响铃字符。
+		*图中没有显示另一个输入限制MAX_CANON,它是在一个规范输入行中的最大字节数。
+		*虽然输出队列通常也是有限长度，但是程序不能存取定义其长度的常数。这时因为当输出队列要填满时，内核使写进程睡眠直至写队列中
+		有可用的空间，所以程序无需关心该队列的长度。
+		*我们将说明如何使用tcflush函数刷清输入或输出队列。与此类似，在说明tcsetattr函数时，将会了解到如何通知系统仅在输出队列空时
+		改变一个终端的属性。
+
+		大多数UNIX系统在一个成为终端行规程的模块中进行规范处理。它是位于内核类属读、写函数和实际设备驱动程序之间的模块。
+
+					用户进程
+					   ↑
+				-----------|-----------
+				|	   ↓          |
+				|  -----------------  |
+				|  |   读、写函数  |  |
+				|  -----------------  |
+				|      |	↑     |
+				|      |	|     |	 内核
+				|      ↓	|     |
+				|  -----------------  |
+				|  |   终端行规程  |  |
+				|  -----------------  |
+				|      |	↑     |
+				|      |	|     |
+				|      ↓	|     |
+				| ------------------- |
+				| | 终端设备驱动程序| |
+				| ------------------- |
+				|	   ↑	      |
+				-----------|-----------	
+					   ↓
+				        实际设备
+
+
+		表列出了所有可以更改以影响终端设备特性的终端标志。
+
+						表11-1	终端标志
+
+		字段	  标志		说明			POSIX.1		SVR4  4.3+BSD  扩展
+		c_iflag   BRKINT     接到BREAK时产生SIGINT	  *					
+			  ICRNL	     将输入的CR转换为NL		  *
+			  IGNBRK     忽略BREAK条件		  *
+			  IGNCR	     忽略CR			  *
+			  IGNPAR     忽略奇偶错字符		  *
+			  IMAXBEL    在输入队列空时振铃			          *	  *
+			  INLCR	     将输入的NL转换为CR	 	  *
+			  INPCK	     打开输入奇书偶校验		  *
+			  ISTRIP     剥除输入字符的第8位	  *
+			  IUCLC	     将输入的大写字符转换成小写字符		  *	  
+			  IXANY	     使任一字符都重新起动输出			  *	  *
+			  IXOFF	     使启动/停止输入控制流起作用  *
+			  IXON	     使启动/停止输出控制流起作用  *
+			  PARMRK     标记奇偶错			  *
+		c_oflag	  BSDLY	     退格延迟屏蔽				  *
+			  CRDLY	     CR延迟屏蔽					  *
+			  FFDLY	     换页延迟屏蔽				  *
+			  NLDLY	     NL延迟屏蔽					  *
+			  OCRNL	     将输出的CR转换为NL				  *
+			  OFDEL	     填充符为DEL，否则为NUL			  *
+			  OFILL	     对于延迟使用填充符				  *
+			  OLCUC	     将输出的小写字符转换为大写字符		  *
+			  ONLCR	     将NL转换为CR-NL				  *	  *
+			  ONLRET     NL执行CR功能				  *
+			  ONOCR	     在0列不输出CR			 	  *
+			  ONOEOT     在输出中删除EOT字符				  *
+			  OPOST	     执行输出处理		  *					
+  			  OXTABS     将制表符扩充为空格					  *
+			  TABDLY     水平制表符延迟屏蔽				  *
+			  VTDLY	     垂直制表符延迟屏蔽				  *
+		c_cflag	  CCTS_OFLOW 输出的CTS流控制					  *
+			  CIGNORE    忽略控制标志					  *
+			  CLOCAL     忽略解制-解调器状态行	  *
+			  CREAD	     启用接收装置		  *
+			  CRTS_IFLOW 输入的RTS流控制					  *
+			  CSIZE	     字符大小屏蔽		  *
+			  CSTOPB     送两个停止位，否则为1位	  *
+			  HUPCL	     最后关闭时断开		  *
+			  MDMBUF     经载波的流控输出					  *
+			  PARENB     进行奇偶校			  *
+			  PARODD     奇校，否则为偶校		  *
+		c_lflag   ALTWERASE  使用替换WERASE算法					  *
+			  ECHO	     进行回送			  *
+			  ECHOCTL    回送控制字符^(char)			  *	  *	 
+			  ECHOE      可见擦除符			  *
+			  ECHOK	     回送kill符			  *
+			  ECHOKE     kill的可见擦除				  *	  *
+			  ECHONL     回送NL			  *
+			  ECHOPRT    硬拷贝的可见擦除方式			  *	  *
+			  FLUSHO     刷清输出				    	  *	  *
+			  ICANON     规范输入			  *
+			  IEXTEN     使扩充的输入字符处理起作用   *
+			  ISIG	     使终端产生的信号起作用	  *
+			  NOFLSH     在终端或退出键后不刷清       *
+			  NOKERNINFO STATUS不使内核输出					  *
+			  PENDIN     重新打印					  *	  *
+			  TOSTOP     对于后台输出发送SIGTTOU	  *
+			  XCASE	     规范大/小写表示				  *
+
+  
+				             表  POSIX.1终端 I/O函数
+				   函数					说明			
+				tcgetattr			取属性（termios结构）
+				tcsetattr			设置属性（termios结构）
+				cfgetispeed			得到输入速度
+				cfgetospeed			得到输出速度
+				cfsetispeed			设置输入速度
+				cfsetospeed			设置输出速度
+				tcdrain				等待所有输出都被传输
+				tcflow				挂起传输或接收
+				tcflush				刷清未决输入和/或输出
+				tcsendbreak			送BREAK字符
+				tcgetpgrp			得到前台进程组ID
+				tcsetpgrp			设置前台进程组ID
+
+
+		
+	特殊输入字符
+		POSIX.1定义了11个在输入时作特殊处理的字符。
+			
+					表	终端特殊输入字符
+		   字符	      说明		c_cc 下标	起作用，由：	   典型值	POSIX.1      SVR4  4.3+BSD	
+								字段     标志					扩充
+		    CR        回车      	不能更改       c_lflag   ICANON     \r             *                 
+		   DISCARD   擦除输出   	VDISCARD       c_lflag   IEXTEN     ^O         		      *       *
+		   DSUSP     延迟挂起（SIGTSTP）VDSUSP	       c_lflag   ISIG	    ^Y			      *       *
+		   EOF	     文件结束   	VEOF           c_lflag   ICANON	    ^D		   *
+		   EOL	     行结束		VEOL	       c_lflag   ICANON	  		   *
+		   EOL2      替换的行结束	VEOL2	       c_lflag   ICANON				      *	      *
+		   ERASE     擦除字符		VERASE	       c_lflag	 ICANON	    ^H		   *
+		   INTR	     中断信号（SIGINT） VINTR	       c_lflag   ISIG	   ^?,^C           *
+		   KILL	     擦行		VKILL	       c_lflag	 ICANON	    ^U		   *
+		   LNEXT     下一个字列字符	VLNEXT	       c_lflag   IEXTEN     ^V			      *       *
+		   NL	     新行		不能更改       c_lflag	 ICANON	    \n		   *
+		   QUIT	     退出信号（SIGQUIT）VQUIT	       c_lflag   ISIG       ^\		   *
+		   REPRINT   再打印全部输入     VREPRINT       c_lflag   ICANON     ^R			      *	      *
+		   START     恢复输出		VSTART	       c_lflag   IXON/IXOFF ^Q		   *
+		   STATUS    状态要求		VSTATUS	       c_lflag   ICANON     ^T				      *
+		   STOP	     停止输出		VSTOP	       c_lflag   IXON/IXOFF ^S		   *
+		   SUSP	     挂起信号（SIGTSTP）VSUSP	       c_lflag   ISIG       ^Z		   *
+		   WERASE    擦除字		VWERASE	       c_lflag   ICANON     ^W			      *	      *
+
+
+
+
+
+	获得和设置终端属性
+		使用函数tcgetattr和tcsetattr可以获得或设置termios。
+		这样也就可以检测和修改各种终端选择标志和特殊字符，以使终端按我们所希望的方式进行操作。
+		
+		#include<termios.h>
+		
+		int  tcgetattr(int filedes, struct termios *termptr);
+		
+		int  tcsetattr(int filedes, int opt, const struct termios *termptr);
+		这两个函数都有一个指向termios结构的指针作为其参数，它们返回当前终端的属性，或者设置该终端的属性。
+		tcsetattr的参数opt使我们可以指定在什么时候新的终端属性才起作用。
+		
+		opt可以指定为下列常数中的一个：
+		*TCSANOW  更改立即发生。
+		*TCSADRAIN  发送了所有输出后更改才发生。若更改输出参数则应使用此选择项。
+		*TCSAFLUSH  发送了所有输出后更改才发生。更进一步，在更改发生时未读的所有输入数据都被删除（刷清）。
+
+
+
+	终端选择标志
+		所有列出的选择标志（除屏蔽标志外）都用一或多位表示，而屏蔽标志则定义多位。	
+
+
+	
+	stty命令
+		上节说明的所有选择项，在程序中都可用tcgettattr和tcsetattr函数进行检查和更改。
+		在命令行中则用stty(1)命令进行检查和更改。
+		
+
+
+
+	波特率函数
+		波特率是一个历史沿用的术语，现在它指的是“位/每秒”。虽然大多数终端设备对输入和输出使用同一波特率，但是只要硬件许可，
+		可以将它们设置为两个不同值。
+
+		#include<termios.h>
+
+		speed_t  cfgetispeed(const  struct  termios *termptr);
+		speed_t  cfgetospeed(const  struct  termios *termptr);
+
+		int  cfsetispeed(struct termios *termptr, speed_t speed);
+		int  cfsetospeed(struct termios *termptr, speed_t speed);
+
+
+
+	行控制函数
+		下列四个函数提供了终端设备的行控制能力。
+		#include<termios.h>
+
+		int  tcdrain(int filedes);
+		int  tcflow(int filedes, int action);
+		int  tcflush(int fileses, int queue);
+		int  tcsendbreak(int filedes, int duration);
+
+		tcdrain函数等待所有输出都被发送。tcflow用于对输入和输出流控制进行控制。
+		action参数应当是下列四个值之一。
+		*TCOOFF  输出被挂起。
+		*TCOON   以前被挂起的输出被重新起动。
+		*TCIOFF  系统发送一个STOP字符。这将使终端设备暂停发送数据。
+		*TCION   系统发送一个START字符。这将使终端恢复发送数据。
+
+		tcflush函数刷清输入缓存（终端驱动程序已接收到，但用户程序尚未读）或输出缓存（用户程序已经写，但尚未发送）。
+		queue参数应当是下列三个常数之一：
+		*TCIFLUSH  刷清输入队列
+		*TCOFLUSH  刷清输出队列
+		*TCIOFLUSH  刷清输入、输出队列。
+
+
+
+	终端标识
+		在大多数UNIX系统中，控制终端的名字是/dev/tty。
+
+		#include<stdio.h>
+
+		char  * ctermid(char *ptr);
+		如果ptr是非空，则它被认为是一个指针，指向长度至少为L_ctermid字节的数组，进程的控制终端名存放在该数组中。
+		常数L_ctermid定义在<stdio.h>中。若ptr是一个空指针，则该函数为数组（通常作为静态变量）分配空间。
+
+		另外两个与终端标识有关的函数是isatty和ttyname。如果文件描述符引用一个终端设备，则isatty返回真，
+		而ttyname则返回在该文件描述符上打开的终端设备的路径名。
+
+		#include<unistd.h>
+
+		int  isatty(int filedes);
+		char  *ttyname(int filedes);
+
+
+
+	规范方式
+		规范方式很简单——发一个读请求，当一行已经输入后，终端驱动程序即放回。
+		*所要求的字节数已读到时读即返回。
+		*当读到一个行定界符时，读返回。
+
+
+	
+	非规范方式
+		将termios结构中c_lflag字段的ICANON标志关闭就使终端处于非规范方式。在非规范方式中，输入数据不装配成行，不处理下列特殊字符：
+		ERASE、KILL、EOF、NL、EOL、EOL2、CR、REPRINT、STATUS和WERASE。
+
+	
+
+	终端的窗口大小
+		SVR4和伯克利系统都提供了一种功能，用其可以对当前终端窗口的大小进行跟踪，在窗口大小发生变化时，使内核通知前台进程组。
+		
+		struct winsize {
+		  unsigned  short  ws_row;   /* rows, in characters */
+		  unsigned  short  ws_col;   /* columns, in characters */
+		  unsigned  short  ws_xpixel;   /* horizontal size, pixels (not used) */
+		  unsigned  short  ws_ypixel;   /* vertical size, pixels (not used) */
+		};
+
+		此结构的作用是：
+		（1）用ioctl的TIOCGWINSZ命令可以取此结构的当前值。
+		（2）用ioctl的TIOCSWINSZ命令可以将此结构的新值存放到内核中。如果此新值与存放在内核中的当前值不同，则向前台进程组发送
+		 SIGWINCH信号。
+		（3）除了存放此结构的当前值以及在此值改变时产生一个信号以外，内核对该结构不进行任何其他操作。对结构中的值进行解释完全
+		 是应用程序的工作。
+		
+
+
+
+	termcap,terminfo和curses
+		termcap的意思是终端性能，它涉及到文本文件/etc/termcap和一套读此文件的例程。
+		termcap这种技术是在伯克利为了支持vi编辑器而发展起来的。termcap文件包含了对各种终端的说明。
+		然后，支持termcap文件的一套例程也从vi编辑程序中抽取出来，放在一个单独的curses(光标)库中。
+		termcap这种技术不是很完善，当越来越多的终端被加到该数据文件中时，为了找到一个特定的终端就需使用较长的时间扫描此文件。
+		这些缺陷导致开发另一种新技术——terminfo及与其相关的curses库。
+
+			
