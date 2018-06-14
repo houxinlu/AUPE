@@ -1,0 +1,334 @@
+高 级  I/O
+
+        本章内容：非阻塞IO、记录锁、系统V流机制、IO多路转接（select和poll函数）、readv和writev函数，以及存储映照IO（mmap）
+
+
+
+        非阻塞I/O
+
+                小节在介绍非阻塞IO时，先介绍了IO在什么情况下会阻塞，然后再对比介绍了非阻塞IO，还是比较容易理解的。
+
+                前面章节介绍系统调用分成两类：低速系统调用和其他。
+                低速系统调用是可能会使进程永远阻塞的一类系统调用：
+                *如果数据不存在，读文件可能会使调用者永远阻塞
+                *如果数据不能立即被接受，则写这些同样的文件也会使调用者永远阻塞。
+                *在某些条件发生之前，打开文件会被阻塞
+                *对已经加上强制性记录锁的文件进行读、写。
+                *某些ioctl操作。
+                *某些进程间通信函数。
+                 虽然读、写磁盘文件会使调用在短暂时间内阻塞，但并不能将它们视为“低速”。
+                非阻塞I/O使我们可以调用不会永远阻塞的I/O操作，例如open,read和write。
+                如果这种操作不能完成，则立即出错返回，表示该操作如继续执行将继续阻塞下去。
+                对于一个给定的描述符有两种方法对其指定非阻塞I/O：
+                （1）如果是调用open以获得该描述符，则可指定O_NONBLOCK标志。
+                （2）对于已经打开的一个描述符，则可调用fcntl打开O_NONBLOCK文件状态标志。
+
+
+
+        记录锁
+                记录锁（record locking）的功能是：一个进程正在读或修改文件的某个部分时，可以阻止其他进程修改同一文件区。
+
+
+          历史
+                                        各种UNIX系统支持的记录锁形式
+
+                系 统           建议性       强制性       fcntl       lockf        flock
+		POSIX.1		  *			    *
+	 	XPG3		  *			    *
+		SVR2		  *			    *		*
+		SVR3,SVR4	  *		*	    *		*
+		4.3BSD		  *						     *
+		4.3BSD Reno	  *			    *			     *
+
+		本节最后将说明建议性锁和强制性锁之间的区别。
+
+	
+	fcntl记录锁
+
+		fcntl函数
+		#include<sys/types.h>
+		#include<unistd.h>
+		#include<fcntl.h>
+
+		int  fcntl(int filedes, int cmd, ... /* struct flock *flockpter */);
+		对于记录锁，cmd是F_GETLK、F_SETLK或F_SETLKW。
+
+		struct  flock {
+		    short   l_type;	
+		    off_t   l_start;
+		    short   l_whence;
+		    off_t   l_len;
+		    pid_t   l_pid;
+		};
+		flock结构说明：
+		*所希望的锁类型：F_RDLCK(共享读锁)、F_WRLCK(独占性写锁)或F_UNLCK(解锁一个区域)
+		*要加锁或解锁的区域的起始地址，由l_start和l_whence两者决定。l_stat是相对位移量（字节），
+		 l_whence则决定了相对位移量的起点。这与lseek函数中最后两个参数类似。
+		*区域的长度，由l_len表示。
+		*该区域可以在当前文件尾端处开始或超越其尾端处开始，但是不能在文件起始位置之前开始或超过该起始位置。
+		*如若l_len为0，则表示锁的区域从其起点（由l_start和l_whence决定）开始直至最大可能位置位置。
+		*为了锁整个文件，通常的方法是将l_start说明为0，l_whence说明为SEEK_SET,l_len说明为0。
+
+		共享读锁和独占写锁
+		基本规则是：多个进程在一个给定的字节上可以有一把共享的读锁，但是在一个给定字节上的写锁则只能由一个进程独用。
+
+		以下说明fcntl函数的三种命令：
+		*F_GETLK 决定由flockpter所秒数的锁是否被另外一把锁所排斥（阻塞）。
+		*F_SETLK 设置由flockptr所描述的锁。
+		*F_SETLKW 这是F_SETLK的阻塞版本。
+
+
+	  锁的隐含继承和释放
+		关于记录锁的自动继承和释放的三条规则：
+		（1）锁与进程、文件两方面有关
+			一方面，当一个进程终止时，它所建立的锁全部释放
+			另一方面，任何时候关闭一个描述符时，则该进程通过这一描述符可以存访的文件上的任何一把锁都被释放。
+			这就意味着：
+				fd1=open(pathname,...)
+				read_lock(fd1,...)
+				fd2=dup(fd1);
+				close(fd2);
+			则在close(fd2)后，在fd1上设置的锁被释放。如果将dup代换为open,其效果也一样：
+				fd1=open(pathname,...)
+				read_lock(fd1,...)
+				fd2=open(pathname,...)
+				close(fd2);
+
+		（2）由fork产生的子进程不断继承父进程锁设置的锁。
+		（3）在执行exec后，新程序可以继承原执行程序的锁。
+
+
+	  建议性锁和强制性锁
+		考虑数据库存取例程序。如果该库中所有函数都以一致的方法处理记录锁，则称使用这些函数存取数据库的任何进程集为合作进程。
+		如果这些函数是唯一的用来存取数据库的函数，那么它们使用建议性锁是可行的。
+		但是建议性锁并不能阻止对数据库文件有写许可权的任何其他进程写数据库文件。不适用协同一致的方法来存取数据库的进程是一个非合作
+		进程。
+
+					表  强制性锁对其他进程读、写的影响
+					
+							阻塞描述符，试图	  非阻塞描述符，试图
+							  读        写               读         写
+		在区域上的读锁				 可以      阻塞             可以       EAGAIN
+		在区域上的写锁				 阻塞      阻塞            EAGAIN      EAGAIN
+
+
+
+
+
+	流
+	    流是系统V提供的构造内核设备驱动程序和网络协议包的一种通用方法，对流进行讨论的目的是理解下列各点：
+	
+	    （1）系统V的终端界面。
+	    （2）I/O多路复用中轮询函数的使用。
+	    （3）基于流管道和命名流管道的实现。
+	    流在用户进程和设备驱动程序之间提供了一条全双工通路。
+	    在流首之下可以压入处理模块。
+	    任一个数的处理模块可以压入流。
+
+
+				用户进程					用户进程
+				   ↑						   ↑		
+			-----------|-----------		顺流    -------------------|-----------
+				   ↓			 |			   ↓	      
+			    流首（系统调用界面）         |			  流首 
+				   ↑		         ↓                      |     ↑
+			           |             内核                           ↓     |
+				   ↓					       处理模块
+		 	      设备驱动程序					|     ↑			内核
+			    （或伪设备驱动程序）	 		        ↓     |                  ↑
+									      设备驱动程序               |  
+													 |
+													逆流
+			图1  一个简单的流				图2  具有处理模块的流		
+
+
+		流模块是作为内核的一部分执行的，这类似于设备驱动程序，当构造内核时，流模块连编进入内核。
+
+
+
+	  流消息
+		流的所有输入和输出都基于消息。流首和用户进程使用read、write、getmsg、getpmsg、putmsg和putmsg交换消息。
+		在流首、各处理模块和设备驱动程序之间，消息可以顺流而下，也可以逆流而上。
+
+		在用户进程和流首之间，消息由下列几部分组成：消息类型、可选择的控制信息以及可选择的数据。
+
+		控制信息和数据存访在strbuf结构中：
+		struct  strbuf {
+		   int  maxlen;
+	 	   int  len;
+		   char *buf;
+		}
+
+	  putmsg和putpmsg函数
+		putmsg和putpmsg函数用于将流消息（控制信息或数据，或两者）写至流中。
+		这两个函数的区别是后者允许对消息指定一个优先波段。
+
+		#include<stropts.h>
+		int putmsg(int filedes, const struct strbuf *ctlptr, const struct strbuf *dataptr, int flag);
+
+		int putpmsg(int filedes, const struct strbuf *ctlptr, const struct strbuf *dataptr, int band, int flag);
+
+		对流也可以使用write函数，它等效于不带任何控制信息，flag为0的putmsg.
+		这两个函数可以产生三种不同优先级的信号：普通、优先波段和高优先级。
+
+	  流ioctl操作
+		ioctl函数，它能做其它I/O函数不能处理的事情。流系统中继续采用了该函数。
+
+	  写方式
+		可以用ioctl取得和设置一个流的写方式。如果将request设置为I_GWROPT，第三个参数为指向一个整型变量的指针，则
+		该流的当前写方式就在该整型量中返回。
+		目前，只定义了两个写方式值。
+		*SNDZERO 对管道和FIFO的0长写会造成顺流传送一个0长消息。
+		*SNDPIPE 在流上已出错后，若调用write或putmsg，则向调用进程发送SIGPIPE信号。
+	  
+	  getmsg和getpmsg函数
+		#include<stropts.h>
+		int  getmsg(int filedes, struct strbuf *ctlptr, struct strbuf *dataptr, int *flagptr);
+		
+		int getpmsg(int filedes, struct strbuf *ctlptr, struct strbuf *dataptr, int *flagptr);
+		注意，flagptr和bandptr是指向整型的指针。
+
+	  读方式
+		read流设备有两个潜在的问题：
+		（1）如果读到流中消息的记录边界将怎样？
+		（2）如果调用read,而流中下一个消息有控制信息又将如何？
+		第一种情况 默认处理方式被称为字节流方式，
+		第二种情况 默认处理方式，如果在队列的前端有控制消息，则read出错返回。
+
+
+
+
+	I/O多路转接
+		当从一个描述符读，然后又写到另一个描述符时，可以在下列形式的循环中使用阻塞I/O：
+		while((n=read(STDIN_FILENO,buf,BUFSIZE) )>0)
+		   if(write(STDOUT_FILENO,buf,n)!=n)
+			err_sys(write error);
+
+		IO多路处理的方法：
+		1.调制解调器模型，阻塞read
+		2.非阻塞I/O读取数据
+		3.异步I/O
+		4.I/O多路转接，其基本思想是：先构造一张有关描述符的表，然后调用一个函数，他要到这些描述符中的一个已准备好进行I/O时才返回。
+
+	  select函数
+		select函数使我们在SVR4和4.3+BSD之下可以执行I/O多路转接，传向select的参数告诉内核：
+		（1）我们所关心的描述符。
+		（2）对于每个描述符我们所关心的条件。
+		（3）希望等待多长时间。
+		从select返回时，内核告诉我们：
+		（1）已准备好的描述符的数量。
+		（2）哪一个描述符已准备好读、写或异常条件。
+		使用这种返回值，就可调用相应的I/O函数（一般是read或write），并且确知该函数不会阻塞。
+		#include<sys/types.h>
+		#include<sys/time.h>
+		#include<unistd.h>
+
+		int  select (int maxfdp1, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *typtr);
+
+		最后一个参数，指定愿意等待的时间。
+		    strcut  timeval {
+			long  tv_sec;
+			long  tv_usec;
+		};
+		
+		有三种情况：
+		*tvptr==NULL;   永远等待。如果捕捉到一个信号则中断此无限期等待。
+		*tvptr -> tv_sec == 0 &&  tvptr -> tv_usec == 0;  完全不等待。测试所有指定的描述符并立即返回。
+		*tvptr -> tv_sec != 0 || tvptr -> tv_usec != 0;	   等待指定的秒数和微秒数。
+
+
+
+	poll函数
+		SVR4的poll函数类似于select，但是其调用形式则有所不同。
+		#include<stropts.h>
+		#include<poll.h>
+		
+		int  poll(struct poll *fdarray[], unsigned long *fds, int timeout);
+
+		与select不同，poll不是为每个条件构造一个描述符集，而是构造一个pollfd结构数组，每个数组元素指定一个描述符编号以及对其所
+	      关心的条件，
+
+		struct  pollfd  {
+		  int  fd;
+		  short  events;
+		  short  revents;
+		}
+		
+				表   poll的events和revents标志
+
+		名称	    对events的输入	从revents得到的结构		说明
+	       POLLIN		 *			*		 可读除高优级外的数据，不阻塞
+	       POLLRDNORM	 *			*		 可读普通（优先波段0 数据，不阻塞）
+	       POLLRDBAND	 *		  	*		 可读0优先波段数据，不阻塞
+	       POLLPRI		 *			*		 可读高优先级数据，不阻塞
+
+	       POLLOUT		 *			*		 可与普通数据，不阻塞
+	       POLLWRNORM	 *			*		 与POLLOUT相同
+	       POLLWRBAND	 *			*		 可写非0优先波段数据，不阻塞
+		
+	       POLLERR					*		 已出错
+	       POLLHUP					*		 已挂起
+	       POLLNVAL					*		 此描述符并不引用一打开文件
+	
+
+		poll的最后一个参数说明我们想要等待多少时间。
+		*timeout == INFTIM  永远等待。
+		*timeout == 0 不等待。测试所有描述符并立即返回。
+		*timeout > 0  等待timeout毫秒。当指定的描述符之一已准备好，或指定的时间值已超过时立即返回。
+
+
+
+	异步I/O
+		使用select和poll可以实现异步I/O。
+
+	  SVR4
+		在系统V中，异步I/O是流系统的一部分。它只对流设备起作用。
+		SVR4异步I/O信号是SIGPOLL。
+	  4.3+BSD
+		在4.3+BSD中，异步I/O是两个信号SIGIO和SIGURG的组合。前者是通用异步I/O信号，后者则只被用来通知进程在网络连接上到达了非
+	    规定波特率的数据。
+
+
+	
+	readv和writev函数
+		readv和writev函数用于在一个函数调用中读、写多个非连接缓存。
+		有时也将这两个函数成为散布读（scatter read）和聚集写(gather write)
+
+		#include<sys/types.h>
+		#include<sys/uio.h>
+
+		ssize_t	 readv(int filedes, const struct iovec iov[], int iovcnt);
+		ssize_t  write(int filedes, const struct iovec iov[], int iovcnt);
+
+		这两个函数的第二个参数是指向iovec结构数组的一个指针：
+		struct lovec {
+			void    *iov_base;
+			size_t   iov_len;
+		}
+
+
+
+	readn和writen函数
+		某些设备，特别是终端、网络和SVR4的流设备有下列两种性质：
+		（1）一次read操作所返回的数据可能少于所要求的数据，即使还没达到文件尾端。
+		（2）一次write操作的返回值也可能少于指定输出的字节数。
+
+		#include"ourhdr.h"
+
+		ssize_t  readn(int filedes, void *buff, size_t nbytes);
+		ssize_t  writen(int filedes, void *buff, size_t nbytes);
+
+		在要将数据写到上面提到的设备上时，就可调用writen，但是仅当先就知道要接受数据的数量时，才调用readn。
+
+
+
+
+	存储映射I/O
+		存储映射I/O使一个磁盘文件与存储空间中的一个缓存相映射。于是当从缓存中取数据，就相当于读文件中的相应字节。
+		与此类似，将数据存入缓存，则相应字节就自动地写入文件。这样，就可以在不使用read和write的情况下执行I/O。
+		为了使用这种功能，应首先告诉内核将一个给定的文件映射到一个存储区域中。这是由mmap函数实现的。
+
+		#include<sys/types.h>
+		#include<sys/mman.h>
+
+		caddr_t  mmap(caddr_t addr, size_t len, int prot, int flag, int filedes, off_t off);
