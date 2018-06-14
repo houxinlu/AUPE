@@ -1,0 +1,384 @@
+信号
+
+	信号非常的有用，也是一个非常符合日常人们理解事物逻辑的一个行为。它是软件终端。也是比较高级的事件机制。
+
+
+	信号的概念
+		首先，每个信号都有一个名字。这些名字都以三个字符SIG开头。
+		
+		产生信号的条件
+		*当用户按某些终端键时，产生信号。
+		*硬件异常产生信号。
+		*进程用kill(2)函数可将信号发送给另一个进程或进程组。
+		*用户可用kill(1)命令将信号发送给其他进程。
+		*当检测到某种软件条件已经发生，并将其通知有关进程时也产生信号。
+
+		应对信号的三种方式
+		*忽略此信号
+		*捕捉信号。
+		*执行系统默认动作
+
+					表10-1  UNIX信号
+
+		名字		说明			ANSIC  POSIX.1    SVR4	4.3+BSD		缺省动作
+		SIGABRT	 	异常终止（abort)	 *	 *	   *	   *		终止w/core
+		SIGALRM		超时（alarm)			 *	   *	   *		终止
+		SIGBUS		硬件故障				   *	   *		终止w/core
+		SIGCHLD		子进程状态改变		  	作业	   *	   *		忽略
+		SIGCONT		使暂停进程继续			作业	   *	   *		继续/忽略
+		SIGEMT		硬件故障				   *	   *		终止w/core
+		SIGFPE		算术异常		 *	  *	   *	   *		终止w/core
+		SIGHUP          链接断开                          *        *       *            终止
+                SIGILL          非法硬件指令             *        *        *       *            终止w/core
+                SIGINFO         键盘状态请求                                       *            忽略
+                SIGINT          终端中断符               *        *        *       *            终止
+                SIGIO           异步I/O                                    *       *            终止/忽略
+                SIGIOT          硬件故障                                   *       *            终止w/core
+                SIGKILL         终止                              *        *       *            终止
+                SIGPIPE         写至无读进程的管道                *        *       *            终止
+                SIGPOLL         可轮询事件（poll）                         *                    终止
+                SIGPROF         梗概时间超时（setitimer）                  *       *            终止
+                SIGPWR          电源失效/再起动                            *                    忽略
+                SIGQUIT         终端退出符                        *        *       *            终止w/core
+                SIGSEGV         无效存储访问             *        *        *       *            终止w/core
+                SIGSTOP         停止                             作业      *       *            暂停进程
+                SIGSYS          无效系统调用                               *       *            终止w/core
+                SIGTERM         终止                     *        *        *       *            终止
+                SIGTRAP         硬件故障                                   *       *            终止w/core
+                SIGTSTP         终端挂起符                       作业      *       *            停止进程
+                SIGTTIN         后台从控制tty读                  作业      *       *            停止进程
+                SIGTTOU         后台向控制tty写                  作业      *       *            停止进程
+                SIGURG          紧急情况                                   *       *            忽略
+                SIGUSR1         用户定义信号                      *        *       *            终止
+                SIGUSR2         用户定义信号                      *        *       *            终止
+                SIGVTALRM       虚拟时间闹钟（setitimer）                  *       *            终止
+                SIGWINCH        终端窗口大小改变                           *       *            忽略
+                SIGXCPU         超过CPU限制（setrlimit）                   *       *            终止w/core
+                SIGXFSZ         超过文件长度限制（setrlimit）              *       *            终止w/core
+
+
+                在系统默认动作列，“终止w/core”表示在进程当前工作目录的core文件中复制了该进程的存储图像（该文件名为core）。
+                大多数UNIX调试程序都使用core文件以检查进程在终止时的状态。
+
+
+
+        signal()
+                UNIX信号机制最简单的界面时signal函数
+                #include<signal.h>
+
+                void(*signal (int signo, void(*func)(init))) (int);
+
+
+                signo参数是表10-1中的信号名。
+		func的值是：（a）常数SIG_IGN,或（b）常数SIG_DFL,或（c）当接到此信号后要调用的函数的地址。
+			如果指定SIG_IGN,则向内核表示忽略此信号。（SIGKILL和SIGSTOP不能忽略）
+			如果指定SIG_DFL,则表示接到此信号后的动作是系统默认动作。当指定函数地址时，我们称此为捕捉此信号。
+			我们称此函数为信号处理程序（signal handler）或信号捕捉函数（signal-catching function）。
+		
+          	程序启动
+		   当执行一个程序时，所有信号的状态都是系统默认或忽略。通常所有信号都被设置为系统默认动作，除非调用exec的进程忽略该信号。
+		   比较特殊的是，exec函数将原先设置为要捕捉的信号都更改为默认动作，其他信号的状态则不变。
+
+		进程创建
+		   当一个进程调用fork时，其子进程继承父进程的信号处理方式。因为子进程在开始时复制了父进程存储图像，所以信号捕捉函数的地址
+		   在子进程中是有意义的。
+
+	
+
+	不可靠的信号
+		在早期的UNIX版本中，信号是不可靠的。不可靠在这里指的是，信号可能会被丢失————一个信号发生了，但进程却决不会知道这一点。
+		那时，进程对信号的控制能力也很低，它能捕捉信号或忽略它，但有些很需要的功能它却并不具备。
+		早期的C语言版本不支持ANSIC的void数据类型，所以将信号处理程序说明为int类型。
+
+
+
+	中断的系统调用
+		早期UNIX系统的一个特性是：如果在进程执行一个低速系统调用而阻塞期间捕捉到一个信号，则该系统调用就被中断不再继续执行。
+		该系统调用返回出错，其errno设置为EINTR。这样处理的理由是：因为一个信号发生了，进程捕捉到了它，这意味着已经发生了某种
+	     事情，所以是个好机会应当唤醒阻塞的系统调用。
+
+		为了支持这种特性，将系统调用分成两类：低速系统调用和其他系统调用。低速系统调用是可能会使进程永远阻塞的一类系统调用，
+		它们包括：
+		*在读某些类型的文件时，如果数据并不存在则可能会使调用者永远阻塞（管道、终端设备以及网络设备）。
+		*在写这些类型的文件时，如果不能立即接受这些数据，则也可能会使调用者永远阻塞。
+		*打开文件，在某种条件发生之前也可能会使调用者阻塞。
+		*pause(按照定义，它使调用进程睡眠直至捕捉到一个信号)和wait。
+		*某种ioctl操作。
+		*某些进程间通信函数。
+
+	     在这些低速系统调用中一个值得注意的例外是与磁盘I/O有关的系统调用。虽然读、写一个磁盘文件可能暂时阻塞调用者，但是除非发生
+	     硬件错误，I/O操作总会很快返回，并使调用者不再处于阻塞状态。
+
+
+
+	可再入函数
+		进程捕捉到信号并继续执行时，它首先执行该信号处理程序中的指令。如果从信号处理程序返回（例如没有调用exit或longjmp），则继续
+	     执行在捕捉到信号时进程正在执行的正常指令序列（这类似于硬件中断发生时所做的）。但在信号处理程序中，不能判断捕捉到信号时进程执
+	     行到何处。
+		POSIX.1说明了保证可再入的函数。表10-3列出了这些可再入函数。图中四个带*号的函数并没有按POSIX.1说明为是可再入的，但SVR4 SVID	       
+		[AT&T 1989]则将它们列为是可再入的。
+
+			表10-3  信号处理程序中可以调用的可再入函数
+		_eixt			fork		  pipe			stat
+		abort*			fstat		  read			sysconf
+		access			getegid		  rename		tcdrain
+		alarm			geteuid		  rmdir			tcflow
+		cfgetispeed		getgid		  setgid		tcflush
+		cfgetospeed		getgroups	  setpgid		tcgetattr
+		cfsetispeed		getpgrp		  setsid		tcgetpgrp
+		cfsetospeed		getpid		  setuid		tcsendbreak
+		chdir			getppid		  sigaction		tcsetattr
+		chmod			getuid		  sigaddset		tcsetpgrp
+		chown			kill		  sigaddelset		time
+		close			link		  sigdelset		times
+		creat			longjmp*	  sigfillset		umask
+		dup			lseek		  sigismember		uname
+		dup2			mkdir		  signal*		unlink
+		execle			mkfifo		  sigpending		utime
+		execve			open		  sigprocmask		wait
+		exit*			pathconf	  sigsuspend		waitpid
+		fcntl			pause		  sleep			write
+
+		没有列入表10-3中的大多数函数是不可再入的，其原因：（a）已知它们使用静态数据结构，或（b）它们调用malloc或free，或（c）它们
+	     是标准I/O函数。标准I/O库的很多实现都以不可再入方式使用全局数据结构。
+
+
+
+	SIGCLD语义
+		SIGCLD和SIGCHLD这两个信号经常易于混淆。SIGCLD是系统V的一个信号名，其语义与名为SIGCHLD的BSD信号不同。
+		POSIX.1则采用BSD的SIGCHLD信号。
+		BSD的SIGCHLD信号的语义与其他信号的语义相类似。 子进程状态改变后产生此信号，父进程需要调用一个wait函数以检测发生了什么。
+		对于SIGCLD早期的处理方式是：
+		（1）如果进程特地指定对该信号的配置为SIG_IGN,则调用进程的子进程将不产生僵死进程。
+		（2）如果将SIGCLD的配置设置为捕捉，则内核立即检查是否有子进程准备好被等待，如果是这样，则调用SIGCLD处理程序。
+		第（2）项改变了为此信号编写处理程序的方法。
+
+
+		
+	可靠信号术语和语义
+		我们需要定义一些在讨论信号时会用到的术语。
+		首先，当造成信号的事件发生时，为进程产生一个信号（或向一个进程发送一个信号）。事件可以是硬件异常（例如除以0）、软件条件
+	     （例如，闹钟时间超过）、终端产生的信号或调用kill函数。
+		在产生了信号时，内核通常在进程表中设置某种形式的一个标志。当对信号做了这种动作时，我们说向一个进程递送了一个信号。在信号
+	      产生和递送之间的时间间隔内，称信号未决。
+		进程可以选用“信号递送阻塞”。如果为进程产生了一个选择为阻塞的信号，而且对该信号的动作是系统默认动作或捕捉该信号，则为该进
+	      程将此信号保持为未决状态，直到该进程（a）对此信号解除了阻塞，或者（b）将对此信号的动作更改为忽略。当递送一个原来被阻塞的信
+	      号给进程时，而不是在产生该信号时，内核才决定对它的处理方式。于是进程在信号递送给它之前仍可改变对它的动作。进程调用sigpending		
+	      函数将指定的信号设置为阻塞和未决。
+		如果在进程解除对某个信号的阻塞之前，这种信号发生了多次，POSIX.1允许系统传递该信号一次或多次。如果递送该信号多次，则称这些
+	      信号排了队，但是大多数UNIX并不对信号排队。代之以，UNIX内核只递送这种信号一次。
+		如果有多个信号要递送给一个进程，那么该如何呢？虽然POSIX.1并没有规定这些信号的递送顺序，但是POSIX.1建议：与进程当前状态有
+	      关的信号，例如SIGSEGV在其他信号之前递送。
+		每个进程都有一个信号屏蔽字，它规定了当前要阻塞递送到该进程的信号集。对于每种可能的信号，该屏蔽字中都有一位与之对应。对于
+	      某种信号，若其对应位已设置，则它当前是被阻塞的。进程可以调用sigprocmask来检测和更改其当前信号屏蔽字。
+		信号数可能会超过一个整形数包含的二进制位数，因此POSIX.1定义了一个新数据类型sigset_t,它保持一个信号集。
+
+
+
+	kill()和raise()
+		kill()函数将信号发送给进程或进程组。raise()函数则允许进程向自身发送信号。
+		#include<sys/types.h>
+		#include<signal.h>
+
+		int kill(pid_t pid, int signo);
+		int raise(int signo);
+
+		kill的pid参数有四种不同的情况：
+		*pid>0 将信号发送给进程ID为pid的进程。
+		*pid==0 将信号发送给其进程组ID等于发送进程的进程组ID，而且发送进程有许可权向其发送信号的所有进程。
+		这里用的术语“所有进程”不包括实现定义的系统进程集。对于大多数UNIX系统，系统进程集包括：交换进程（pid 0）,init(pid 1)以及
+	      页精灵进程（pid 2）。
+		*pid<0 将信号发送给其进程组ID等于pid绝对值，而且发送进程有许可权向其发送信号的所有进程。如上所述一样，“所有进程”并不包括
+		系统进程集中的进程。
+		*pid == -1 POSIX.1未定义此种情况。
+
+
+
+	alarm()和pause()
+		使用alarm()可以设置一个时间值（闹钟时间），在将来的某个时刻该时间值会被超过。当所设置的时间值被超过后，产生SIGALRM信号。
+		如果不忽略或不捕捉此信号，则其默认动作是终止该进程。
+		
+		#include<unistd.h>
+		unsigned  int  alarm(unsigned int seconds);
+		其中，参数secondes的值是秒数，经过了指定的seconds秒后会产生信号SIGALRM。
+
+		pause()使调用进程挂起直至捕捉到一个信号
+		#include<unistd.h>
+		
+		int pause(void);
+		只有执行了一个信号处理程序并从其返回时，pause才返回，在这种情况下，pause返回-1，errno设置为EINTR。
+
+
+
+	信号集
+		我们需要有一个能表示多个信号———信号集（signal set）的数据类型。
+		将在下节sigprocmask这样的函数中使用这种数据类型，以告诉内核不允许发生该信号集中的信号。
+		如前所述，信号种类数目可能超过一个整型量包含的位数，所以一般而言，不能用整型量中的一位代表一种信号。
+		
+		POSIX.1定义数据类型sigset_t以包含一个信号集，并且定义了下列五个处理信号集的函数。
+		#include<signal.h>
+		
+		int sigemptyset(sigset_t *set);
+		int sigfillset(sigset_t *set);
+		int sigaddset(sigset_t *set, int signo);
+		int sigdelset(sigset_t *set, int signo);
+
+		int sigismember(const sigset_t *set, int signo);
+		
+		函数sigemptyset初始化由set指向的信号集，使排除其中所有信号。函数sigfillset初始化由set指向的信号集，使其包括所有信号。
+		所有应用程序在使用信号集前，都对该信号集调用sigemptyset或sigfillset一次。这是因为C编译程序将不赋初值的外部和静态度量都
+	      初始化为0，而这是否与给定系统上信号集的实现相对应并不清除。
+
+
+
+	sigprocmask()
+		可靠信号术语定义小节曾说明一个进程的信号屏蔽字规定了当前阻塞而不能递送给该进程的信号集。调用函数sigprocmask可以检测或更
+	      改（或两者）进程的信号屏蔽字。
+		
+		#include<signal.h>
+
+		int sigprocmask(int how, const sigset *set, sigset_t *oset);
+		首先，oset是非空指针，进程的当前信号屏蔽字通过oset返回。其次，若set是一个非空指针，则参数how指示如何修改当前信号屏蔽字。
+
+		下表说明了how可选用的值。SIG_BLOCK是或操作，而SIG_SETMASK则是赋值操作。
+
+		how						说明
+		SIG_BLOCK		该进程新的信号屏蔽字是其当前信号屏蔽字和set指向信号集的并集。set包含了我们希望阻塞的附加信号	
+		SIG_UNBLOCK		该进程新的信号屏蔽字是其当前信号屏蔽字和set所指向信号集的交集。set包含了我们希望解除阻塞的信号
+		SIG_SETMASK		该进程新的信号屏蔽是set指向的值
+
+		如果set是个空指针，则不改变该进程的信号屏蔽字，how的值也无意义。
+		如果在调用sigprocmask后有任何未决的、不再阻塞的信号，则在sigprocmask返回前，至少将其中之一递送给该进程。
+
+
+
+	sigpending()
+		sigpending返回对于调用进程被阻塞不能递送和当前未决的信号集。该信号集通过set参数返回。
+		#include<signal.h>
+		
+		int sigpending(sigset_t *set);
+
+
+
+	sigaction()
+		sigaction()的功能是检查或修改（或两者）与指定信号相关联的处理动作。
+		此函数取代了UNIX早期版本使用的signal()。本书末尾用sigaction()实现了signal。
+		#include<signal.h>
+
+		int sigaction(int signo, const struct sigaction *act, struct sigaction *oact);
+
+		其中，参数signo是要检测或修改具体动作的信号的编号数。若act指针非空，则要修改其动作。
+		如果oact指针非空，则系统返回该信号的原先动作。此函数使用下列结构：
+		struct	sigaction {
+		   void		(*sa_hanler)();
+
+		   sigset_t   sa_mask;
+	  	   int	      sa_flags;
+		};
+
+		当更改信号动作时，如果sa_handler指向一个信号捕捉函数（不是常数SIG_IGN或SIG_DFL),则sa_mask字段说明了一个信号集，在调用信号捕		
+		捉函数之前，该信号集要加到进程的信号屏蔽字中。仅当从信号捕捉函数返回时再将进程的信号屏蔽字恢复为原先值。这样，在调用信号处理程	 	   
+		序时就能阻塞某些信号。在信号处理程序被调用时，系统建立的新信号屏蔽字会自动包括正被递送的信号。因此保证了在处理一个给定的信号时	      
+		如果这种信号再次发生，那么它会被阻塞到对前一个信号的处理结束为止。
+		一旦对给定的信号设置了一个动作，那么在用sigaction改变它之前，该设置就一直有效。
+		act结构的sa_flages字段包含了对信号进行处理的各个选择项。
+
+				表   信号处理的选择项标注（sa_flages）
+		  可选项          POSIX.1	     SVR4   4.3+BSD		说明
+		 SA_NOCLDSTOP	    *		      *	       *	若signo是SIGCHLD,当一子进程停止时（作业控制），不产生此信号。
+	      							      当一子进程终止时，仍旧产生此信号（但请参阅下面说明的SVR4 SA_NOCLDWAIT 可选项）由此信号中断的系统调用自动再起动。
+									若用sigaltstack(2)已说明了一替换栈，则此信号递送给替换栈上的进程
+		 SA_RESTART	                      *	       *	若signo是SIGCHLD,则当调用进程的子进程终止时，不创建僵死进程。若调用									 						       进程再后面调用wait，则阻塞到它所有子进程都终止，此时返回-1，crrno设置									    						      为ECHILD。
+		 SA_ONSTACK			      *        *	当捕捉到此信号时，在执行其信号捕捉函数时，系统不自动阻塞此信号。
+									注意，此种类型的操作对应于早期的不可靠信号
+		 SA_NOCLDWAIT			      *			对此信号的处理方式在此信号捕捉函数的入口处复置为SIG_DFL。
+									注意，此种类型的信号对应于早期的不可靠信号，
+		 SA_RESETHAND                         *
+		 SA_SIGINFO			      *
+	
+
+
+	sigsetjmp()和siglongjmp()
+		在信号处理程序中经常调用longjmp()以返回到程序的主循环中，而不是从该处理程序返回。
+		确实，ANSIC标准说明一个信号处理程序可以返回或者调用abort、exit或longjmp。
+		调用longjmp()时有一个问题。当捕捉到一个信号时，进入信号捕捉函数，此时当前信号被自动地加到进程的信号屏蔽字中。
+		这阻止了后来产生的这种信号中断此信号处理程序。
+
+		为了允许两种形式并存，POSIX.1并没有说明setjmp和longjmp对信号屏蔽字的作用，而是定义了两个新函数sigsetjmp和siglongjmp。
+		在信号处理程序中做非局部转移时应当使用这两个函数。
+
+		#include<setjmp.h>
+
+		int sigsetjmp(sigjmp_buf env, int savemask);
+		void siglongjmp(sigjmp_buf env, int val);
+		这两个函数和setjmp,longjmp之间的唯一区别是sigsetjmp增加了一个参数。
+		如果savemask非0，则sigsetjmp在env中保存进程的当前信号屏蔽字。
+		调用siglongjmp时，如果带非0savemask的sigsetjmp调用已经保存了env，则siglongjmp从其中恢复保存的信号屏蔽字。
+		        sigsuspend()
+                在一个原子操作中实现恢复信号屏蔽字，然后使进程睡眠，这种功能是由sigsuspend()所提供的。
+                #include<signal.h>
+
+                int sigsuspend(const sigset_t *sigmask);
+                进程的信号屏蔽字设置为由sigmask指向的值。
+                在捕捉到一个信号或发生了一个会终止该进程的信号之前，该进程也被挂起。
+                如果捕捉到一个信号而且从该信号处理程序返回，则sigsuspend返回，并且该进程的信号屏蔽字设置为调用sigsuspend之前的值。
+
+
+
+
+        system()
+                POSIX.2要求system忽略SIGINT和SIGQUIT,阻塞SIGCHLD。
+
+
+
+
+
+        sleep()
+                #include<unistd.h>
+
+                unsigned  int sleep(unsigned int seconds);
+
+                此函数使调用进程被挂起直到：
+                （1）已经过了seconds所指定的墙上时钟时间，
+                （2）该进程捕捉到一个信号并从信号处理程序返回。
+                如同alarm信号一样，由于某些系统活动，实际返回时间比所要求的会迟一些。
+                 在第（1）种情况，返回值是0。当由于捕捉到某个信号sleep提早返回时（第（2）种情形），返回值是未睡足的秒数。
+                sleep可以用alarm()实现，但是这并不是必需的。如果使用alarm，则两个函数之间可以有交互作用。
+
+
+
+        作业控制信号
+                六个有关与作业控制的信号
+                *SIGCHLD        子进程已停止或终止
+                *SIGCONT        如果进程已停止，则使其继续运行
+                *SIGSTOP        停止信号（不能被捕捉或忽略）
+                *SIGTSTP        交互停止信号
+                *SIGTTIN        后台进程组的成员读控制终端。
+                *SIGTTOU        后台进程组的成员写控制终端。
+
+
+        其他特征
+                信号名字
+                        某些系统提供数组
+                        extern  char  *sys_siglist[];
+                        数组下标是信号编号，数组中的元素是指向一个信号字符串名字的指针。
+                        这些系统通常也提供函数psignal。
+                        #include<signal.h>
+
+                        void psignal(int signo,const char *msg);
+                        字符串msg(通常是程序名)输出到标准出错，后面跟着一个冒号和一个空格，再跟着对该信号的说明，最后是一个新行符。
+
+                SVR4信号处理程序的附加参数
+			当调用sigaction对一个信号设置配置时，可以指定sa_flags值SA_SIGINFO。
+			struct siginfo {
+			  int    si_signo;
+			  int    si_errno;
+			  int    si_code;
+			  pid_t  si_pid;
+			  uid_t  si_uid;
+			}
+
+		4.3+BSD信号处理程序的附加参数
+			4.3+BSD总是用三个参数调用信号处理程序：
+			handler(int signo, int code, struct sigconttext *scp);
+			参数signo是信号编号，code给出某些信号的附加信息。
