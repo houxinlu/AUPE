@@ -1,0 +1,64 @@
+数据库函数库
+
+	本章将设计一个简单的、多用户数据库的函数库。通过此函数库提供的C语言函数，其他程序可以访问数据库中的记录。
+	这里介绍的是一个数据库函数库与UNIX的接口，以及这些结构与前面各章节的关系。
+
+
+	历史
+		dbm(3)是一个在UNIX系统中很流行的数据库函数库，使用了动态散列结构。
+
+
+	函数库
+		当打开一个数据库时，通过返回值得到一个DB结构的指针。
+
+		#include "db.h"
+
+		DB     *db_open(const char *pathname, int oflag, int mode);
+
+		void  db_close(DB *db);
+		如果db_open成功返回，则将建立两个文件：pathname.idx和pathname.dat, pathname.idx是索引文件，pathname.dat是数据文件。
+
+		
+		我们的实现要求关键字必须是唯一的。
+
+		#include "db.h"
+
+		int  db_t store(DB *db,const char *key, const char *data, int flag);
+		key是data是由NULL结束的字符串。
+
+
+		通过提供关键字key可以从数据库中取出一条记录。
+		#include "db.h"
+	
+		char  *db_fetch(DB *db, const char *key);
+		如果记录找到了，返回的指针指向与关键字联系在一起的数据。
+
+		通过提供关键字key，也可以从数据库中删除一条记录。
+		#include "db.h"
+		
+		int db_delete(DB *db, const char *key);
+		
+		除了通过关键字访问数据库外，也可以一条一条记录地访问数据库。
+		因此，首先调用db_rewind回到数据库的第一条记录，再调用db_nextrec顺序地读每个记录。
+
+		#include "db.h"
+		
+		void db_rewind(DB *db)
+		char  *db_nextrec(DB *db,char *key);
+		如果key是非NULL的指针，db_nextrec将当前记录的关键字存入key中。
+
+
+	并发
+		由于很多系统的实现都采用两个文件（一个索引文件和一个数据文件）的方法。
+
+	粗锁
+		最简单的加锁方法是将这两个文件中的一个作为锁，并要求调用者在对数据库进行操作前必须获得这个锁。
+
+	细锁
+		采用细锁的方法加强粗锁并提高并发度。我们要求一个读进程或写进程在操作一条记录前必须获得此记录所在散列链的读锁或写锁。
+		允许对一条散列链同时可以有多个读进程，而只能有一个写进程。
+
+
+		
+		
+	
