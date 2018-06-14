@@ -1,0 +1,123 @@
+高级进程间通信
+
+	本章介绍某些高级的IPC以及它们的应用方法，包括：流管道和命名流管道。
+		
+	使用这些机制，可以在进程间传递打开文件描述符。
+	其实这章主要就是介绍些方法理念，暂时的实用性不大。
+
+
+
+	流管道
+		流管道是一个双向（全双工）管道。
+		单个流管道就能向父、子进程提供双向的数据流。
+
+		  用户进程				用户进程
+
+		 fd[0]  fd[1]                        fd[0]       fd[1]	
+		   ↑_____↑	                       ↑           ↑
+					               |———————————|
+						       →   流管通  ← 	
+							———————————
+							    内核
+
+			图  观察流管道的两种方式  	
+
+
+
+
+	传送文件描述符
+		在进程间传送打开文件描述符的能力非常有用。
+		用此可以对客户机/服务器应用进行不同的设计。
+		它允许一个进程（一般是服务器）处理与打开一个文件有关的所有操作（涉及的细节可能是：将网络名翻译为网络地址、拨号调制解调器、
+	     协商文件等。）以及向调用进程返回一描述符，该描述符可被用于以后的所有I/O函数。
+
+
+		本章使用的三个函数以发送和接受文件描述符。本节给出对于SVR4和4.3+BSD的这三个函数的不同实现。
+
+		#include"ourhdr.h"
+
+		int  send_fd(int spipefd, int filedes);
+		int  send_err(int spipefd, int status, const  char *errmsg);
+		int  recv_fd(int spipefd, ssize_t (*userfunc)(int, const void *, size_t));
+
+	  SVR4
+		在SVR4之下，文件描述符用两个ioctl命令在一流管道中交换，这两个命令式：I_SENDFD和I_RECVFD。
+		为了发送一描述符，将ioctl的第三个参数设置为实际描述符。
+
+	  4.3BSD
+		为了交换文件描述符，调用sendmsg(2)和recvmsg(2)函数。
+		这两个函数的参数中都有一个指向msghdr的指针，该结构包含了所有关于要发送和接受消息的信息。
+		该结构定义在<sys/socket.h>头文件中，在BSD4.3下，其样式是：
+
+		struct msghdr {
+
+		  caddr_t	  msg_name;
+		  int 		  msg_namelen;
+		  struct  iovec   *msg_iov;
+		  int		  msg_iovlen;
+		  caddr_t	  msg_accrights;
+		  int		  msg_accrightslen;
+		}
+		头两个元素通常用于在网络连接上发送数据报文，在这里，目的地址可以由每个数据报文指定。
+
+
+	  4.3+BSD
+		从4.3BSD Reno开始，更改了msghdr结构的定义。在以前版本中被称之为“存取权”的最后两个元素称为“辅助数据”。
+		另外，在该结构结束处增加了一个新成员msg_flags。
+
+		struct  msghdr {
+		  caddr_t	 msg_name;
+		  int		 msg_namelen;
+		  struct iovec  *msg_iov;
+		  int		 msg_iovlen;
+		  caddr_t	 msg_control;
+		  u_int		 msg_controllen;
+		  int		 msg_flags;
+		};
+		现在，msg_control字段指向一个cmsghdr(控制消息头)结构。
+
+		struct  cmsghdr {
+		  u_int		cmsg_len;
+		  int		cmsg_level;
+		  int		cmsg_type;
+		}
+		为了发送一文件描述符，将cmsg_len设置为cmsghdr结构长度加一个整型（描述符）的长度。
+
+
+
+	客户机——服务器连接函数
+		服务器创建一名字公开的流管道的一端，然后客户机连接至该端。
+		另外，每次一个新客户机连至服务器的命令流管道时，就在客户机和服务器之间创建一条全新的流管道。
+		这样，每次一个新客户机连接至服务器，以及客户机终止时，服务器都会得到通知。
+
+		连接
+		#include"ourhdr.h"
+		
+		int  serv_listen(const  char *name);
+
+		
+		一旦服务器已调用serv_listen,它将调用serv_accept等待客户连接到达。
+		#include"ourhdr.h"
+
+		int  serv_accept(int listenfd, uid_t *uidptr);
+
+
+		客户机为与服务器连接只需调用cli_conn函数。
+		#include"ourhdr.h"
+
+		int  cli_conn(const  char *name);
+
+	  SVR4
+		SVR4提供装配的流以及一个名为connld的流处理模块，用其可以提供与服务器有唯一连接的命令流管道。
+
+		首先，服务器创建一未命名流管道，并将流处理模块connld压入一端
+		然后，使压入connld的一端具有一路径名
+
+	  4.3+BSD
+		在4.3+BSD之下，为了用UNIX域套接口连接客户机和服务器，需要有一套不同的操作函数。
+		因为应用socket、bind、listen、accept和connect函数的大部分细节与其他网络协议有关。
+		
+		
+
+
+	
