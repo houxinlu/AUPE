@@ -1,0 +1,283 @@
+进程间通信
+
+	本章将说明进程之间相互通信的其他技术 — IPC（InterProcess Communication）
+	UNIX IPC已经是而且继续是各种进程通信方式的统称，其中极少能在所有UNIX的实现中进行移植。
+
+					表  UNIX  IPC
+		IPC类型                PISOX.1  XPG3   V7      SVR2    SVR3.2  SVR4   4.3BSD  4.3+BSD
+                管道（半双工）            *       *     *        *        *      *       *        *
+                FIFOs(命令管道)           *       *              *        *      *                *
+                流管道（全双工）                                          *      *       *        *
+                命令流管道                                                *      *       *        *
+                消息队列                          *              *        *      *
+		信号量				  *		 *	  *	 *
+		贡献存储			  *		 *	  *	 *
+		套接口								 *	 *	  *
+		流							  *	 *
+
+		正如上表所示，不管哪一种UNIX实现，都可依靠的唯一一种IPC是半双工的管道。
+		表中前7种IPC通常限于同一台主机的各个进程间的IPC。最后两种；套接口和流，则支持不同主机上各个进程间IPC。
+
+
+
+	管道
+		管道是UNIX IPC的最老形式，并且所有U N I X系统都提供此种通信机制，管道有两种限制；
+		(1) 它们是半双工的。数据只能在一个方向上流动。
+		(2) 它们只能在具有公共祖先的进程之间使用。
+                 通常，一个管道由一个进程创建，然后该进程调用fork此后父、子进程之间就可应用该管道。
+
+		管道是由调用p i p e函数而创建的。
+		#include <unistd.h>
+
+		int pipe(int filedes [2]);
+		经由参数filedes返回两个文件描述符:filedes[0]为读而打开.filedes[1]为写而打开。filedes[1]的输出是filedes[0]的输入。
+
+
+
+
+	popen和pclose函数
+		这两个函数实现的操作是：创建一个管道，fork一个子进程，关闭管道的不使用端，exec一个shell以执行命令，等待命令终止。
+		#include <stdio.h>
+		FILE *popen(const char * cmdstring, const char *type);
+		
+		int  pclose(FILE *fp);
+
+		函数popen 先执行fork，然后调用exec以执行cmdstring，并且返回一个标准I/O文件指针。
+		如果type是"r"，则文件指针连接到cmdstring的标准输出。
+		如果type 是"w",则文件指针连接到cmdstring的标准输入。
+
+
+	
+	协同进程
+		UNIX过滤程序从标准输入读取数据，对其进行适当处理后写到标准输出。几个过滤进程通常在shell管道命令中线性地连接。
+		当同一个程序产生某个过滤程序的输入，同时又读取该过滤程序的输出时，则该过滤程序就成为协同进程。
+
+					父进程       管道1   子进程（协同进程）
+					 fd1[1]  ——————————>  stdin
+					 fd2[2]  <——————————  stdout
+
+					图  驱动一个协同进程——写其标准输入，读其标准输出
+
+
+
+	FIFO
+		FIFO（命名管道）相比传统管道，它的特点是不相关的进程也能交换数据。
+
+		创建FIFO,类似于创建文件
+		#include<sys/types.h>
+		#include<sys/stat.h>
+
+		int  mkfifo(const  char *pathname, mode_t mode);
+		mkfifo函数中mode参数的规格说明与open函数中的mode相同
+
+
+		FIFO有两种用途：
+		(1) FIFO由shell命令使用以便将数据从一条管道线传送到另一条，为此无需创建中间临时文件。
+		(2) FIFO用于客户机-服务器应用程序中，以在客户机和服务器之间传递数据。
+
+
+
+	系统V  IPC
+		三种系统V IPC：消息队列、信号量以及共享存储器之间有很多相似之处。
+
+	  标识符和关键字
+		每个内核中的IPC结构（消息队列、信号量或共享存储段）都用一个非负整数的标识符加以引用。
+		无论何时创建IPC结构（调用msgget、semget或shmget）,都应指定一个关键字（key），
+	     关键字的数据类型由系统规定为key_t，通常在头文件<sys/types.h >中被规定为长整型。
+
+
+		有多种方法使客户机和服务器在同一IPC结构上会合：
+		(1) 服务器可以指定关键字IPC_PRIVAT E创建一个新IPC结构，将返回的标识符存放在某处（例如一个文件）以便客户机取用。
+		(2) 在一个公用头文件中定义一个客户机和服务器都认可的关键字。
+		(3) 客户机和服务器认同一个路径名和课题ID（课题ID是0 ~ 255之间的字符值），
+		然后调用函数ftok将这两个值变换为一个关键字（函数ftok在手册页stdipc（3）中说明）。
+
+		三个get函数（msgget、semget和shmget）都有两个类似的参数key和一个整型的flag。
+		如若满足下列条件，则创建一个新的IPC结构（通常由服务器创建）：
+		(1) key是IPC_PRIVATE
+		(2) key当前未与特定类型的IPC结构相结合,flag中指定了IPC_CREAT位。
+
+
+	  许可权结构
+		系统V IPC为每一个I P C结构设置了一个i p c _ p e r m结构。
+		该结构规定了许可权和所有者。
+
+		struct ipc_perm {
+			uid_t uid; 
+			gid_t gid;
+			uid_t cuid;
+			gid_tc gid; 
+			mode_t mode;
+			ulong seq; 
+			key_t key;
+		}
+		在创建IPC结构时，除seq以外的所有字段都赋初值。
+
+
+	  结构限制
+		每种IPC都会有内在的限制
+
+	  优点和缺点
+		系统V IPC的主要问题是；IPC结构是在系统范围内起作用的，没有访问计数。
+		系统V IPC的另一个问题是；这些IPC结构并不按名字为文件系统所知。
+		等每种方式都有其优缺点，要在实际的实际需求差异化使用。
+
+
+	消息队列
+		消息队列是消息的链接表 ,存放在内核中并由消息队列标识符标识。我们将称消息队列为“队列”，其标识符为“队列ID”。
+		msgget用于创建一个新队列或打开一个现存的队列。
+		
+		每个队列都有一个msqid_ds结构与其相关。此结构规定了队列的当前状态。
+		 struct msqid_ds {
+		    struct  ipc_perm  msg_perm;
+		    struct  msg  *msg_first;
+		    struct  msg  *msg_last;
+                    ulong         msg_cbytes;
+                    ulong         msg_qnum;
+                    ulong         msg_qbytes;
+		    pid_t	  msg_lspid;
+		    pid_t         msg_lrpid;
+		    time_t        msg_stime;
+		    time_t	  msg_rtime;
+		    time_t        msg_ctime;
+		}
+		两个指针msg-first和msg-last分别指向相应消息在内核中的存放位置，所以它们对用户进程而言是无价值的。
+
+
+		调用的第一个函数通常是msgget，其功能是打开一个现存队列或创建一个新队列。
+		#include <sys/types.h>
+		#include <sys/ipc.h>
+		#include <sys/msg.h>
+	
+		int msgget(key_t key, int flag);
+		
+
+
+		msgctl函数对队列执行多种操作。
+		#include <sys/types.h>
+		#include <sys/ipc.h>
+		#include <sys/msg.h>
+
+		int msgctl(int msqid, int cmd, struct msqid_ds * buf);
+
+
+
+
+		调用msgsnd将数据放到消息队列上。
+		#include <sys/types.h>
+		#include <sys/ipc.h>
+		#include <sys/msg.h>
+
+		int msgsnd(int msqid, const void *ptr, size_t nbytes, int flag);
+
+
+
+
+		msgrcv从队列中取用消息。
+		#include <sys/types.h>
+		#include <sys/ipc.h>
+		#include <sys/msg.h>
+
+		int msgrcv(int msqid, void * ptr, size_t nbytes, long type, int flag);
+
+
+
+	信号量
+		信号量与已经介绍过的IPC机构（管道、FIFO以及消息列队）不同。
+		它是一个计数器，用于多进程对共享数据对象的存取。为了获得共享资源，进程需要执行下列操作：
+		(1) 测试控制该资源的信号量。
+		(2) 若此信号量的值为正，则进程可以使用该资源。进程将信号量值减 1，表示它使用了一个资源单位。
+		(3) 若此信号量的值为 0，则进程进入睡眠状态，直至信号量值大于 0。若进程被唤醒后，它返回至(第( 1 )步)。
+
+
+		常用的信号量形式被称之为双态信号量(binary semaphore)。它控制单个资源，其初始值为1。
+		但是，一般而言，信号量的初值可以是任一正值，该值说明有多少个共享资源单位可供共享应用。
+		不幸的是，系统V的信号量与此相比要复杂得多。三种特性造成了这种并非必要的复杂性：
+		(1) 信号量并非是一个非负值，而必需将信号量定义为含有一个或多个信号量值的集合。
+	        当创建一个信号量时，要指定该集合中的各个值
+		(2) 创建信息量（semget）与对其赋初值（semctl）分开。
+		这是一个致命的弱点，因为不能原子地创建一个信号量集合，并且对该集合中的所有值赋初值。
+		(3) 即使没有进程正在使用各种形式的系统V IPC，它们仍然是存在的
+		，所以不得不为这种程序担心，它在终止时并没有释放已经分配给它的信号量。
+
+
+
+		要调用的第一个函数是semget以获得一个信号量ID。
+		#include <sys/types.h>
+		#include <sys/ipc.h>
+		#include <sys/sem.h>
+
+		int semget(key_t key, int nsems, int flag);
+
+
+		semctl函数包含了多种信号量操作。
+		#include <sys/types.h>
+		#include <sys/ipc.h>
+		#include <sys/sem.h>
+
+		int semctl(int semid, int semnum, int cmd, union semun arg);
+
+
+
+		函数s e m o p自动执行信号量集合上的操作数组。
+		#include <sys/types.h>
+		#include<sys/ipc.h>
+		#include<sys/sem.h>
+
+		int semop(int semid, struct sembuf semop array[], size_t nops);
+
+
+
+	共享存储
+		共享存储允许两个或多个进程共享一给定的存储区。因为数据不需要在客户机和服务器之间复制，
+		所以这是最快的一种 I P C。使用共享存储的唯一窍门是多个进程之间对一给定存储区的同步存取。
+
+		内核为每个共享存储段设置了一个shmid_ds结构
+		struct shmid_ds {
+		  struct  ipc_perm  shm_perm;
+		  struct  anon_map  *shm_amp;
+		  int    shm_segsz;	
+		  ushort  shm_lkcnt;
+                  pid_t   shm_lpid;
+                  pid_t   shm_cpid;
+                  ulong   shm_nattch;
+                  ulong   shm_cnattch;
+                  time_t  shm_atime;
+                  time_t  shm_dtime;
+		  time_t  shm_ctime;	
+		};
+
+
+		调用的第一个函数通常是shmget，它获得一个共享存储标识符。
+		#include <sys/types.h>
+		#include <sys/ipc.h>
+		#include <sys/shm.h>
+
+		int shmget(key_t key, int size, int flag);
+
+
+		shmctl函数对共享存储段执行多种操作。
+		#include <sys/types.h>
+		#include <sys/ipc.h>
+		#include <sys/shm.h>
+	
+		int shmctl(int shmid, int cmd, struct shmid_ds *buf);
+
+
+		一旦创建了一个共享存储段，进程就可调用s h m a t将其连接到它的地址空间中。
+		#include <sys/types.h>
+		#include <sys/ipc.h>
+		#include <sys/shm.h>
+
+		void *shmat(int shmid, void * addr, int flag);a
+
+		
+		当对共享存储段的操作已经结束时，则调用shmdt脱接该段。
+		#include <sys/types.h>
+		#include <sys/ipc.h>
+		#include <sys/shm.h>
+
+		int shmdt(void * addr);
+
+
+		addr参数是以前调用shmat时的返回值。
